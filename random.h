@@ -191,7 +191,7 @@ PCG__DECLR PCG_INT32 pcg_random(PCG* rng) {
     rng->state = oldstate * 6364136223846793005ULL + rng->inc;
     PCG_INT32 xorshifted = (PCG_INT32)(((oldstate >> 18u) ^ oldstate) >> 27u);
     PCG_INT32 rot = (PCG_INT32)(oldstate >> 59u);
-    return (PCG_INT32)((xorshifted >> rot) | (xorshifted << (((PCG_INT32)(-(int32_t)rot)) & 31)));
+    return (PCG_INT32)((xorshifted >> rot) | (xorshifted << (((PCG_INT32)(-(PCG_INT32)rot)) & 31)));
 }
 
 PCG__DECLR void pcg_seeds(PCG* rng, PCG_INT64 initstate, PCG_INT64 sequence) {

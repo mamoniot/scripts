@@ -213,6 +213,11 @@ MAM_ALLOC__DECLR MamStack* mam_stack_init(void* alloc_ptr, mam_int alloc_size);
 #define mam_stack_will_overflow(stack, size) ((stack->mem_size + mam_checker_correct_size(size) + sizeof(mam_int)) > stack->mem_capacity)
 
 MAM_ALLOC__DECLR mam_int mam_stack_pushi(MamStack* stack, mam_int size);
+MAM_ALLOC__DECLS void* mam_stack_pushn(MamStack* stack, mam_int size) {
+	return mam_ptr_add(void, stack, mam_stack_pushi(stack, size));
+}
+#define mam_stack_push(type, stack, size) ((type*)mam_stack_pushn(stack, sizeof(type)*(size)))
+
 
 MAM_ALLOC__DECLR void mam_stack_extend(MamStack* stack, mam_int size);
 
@@ -251,13 +256,13 @@ MAM_ALLOC__DECLS void* mam_pool_allocn(MamPool* pool) {
 }
 #define mam_pool_alloc(type, pool) ((type*)mam_pool_allocn(pool))
 
-MAM_ALLOC__DECLS void mam_pool_freei(MamPool* pool, mam_int item);
+MAM_ALLOC__DECLR void mam_pool_freei(MamPool* pool, mam_int item);
 MAM_ALLOC__DECLS void mam_pool_free(MamPool* pool, void* ptr) {
 	mam_pool_freei(pool, ptr_dist(pool, ptr));
 }
 
 
-MAM_ALLOC__DECLS MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size);
+MAM_ALLOC__DECLR MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size);
 
 typedef struct Mam__Block {
 	mam_int pre;//points to the previous block in memory, is 0 for the first block
@@ -281,7 +286,7 @@ MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size);
 MAM_ALLOC__DECLS void* mam_heap_allocn(MamHeap* heap, mam_int size) {
 	return mam_ptr_add(void, heap, mam_heap_alloci(heap, size));
 }
-#define mam_heap_alloc(type, heap, size) ((type*)mam_heap_allocn(heap, size))
+#define mam_heap_alloc(type, heap, size) ((type*)mam_heap_allocn(heap, sizeof(type)*(size)))
 
 MAM_ALLOC__DECLR void mam_heap_freei(MamHeap* heap, mam_int item);
 MAM_ALLOC__DECLS void mam_heap_free(MamHeap* heap, void* ptr) {
@@ -324,7 +329,7 @@ MAM_ALLOC__DECLR mam_int mam_stack_pushi(MamStack* stack, mam_int size) {
 	return mam_checker_correct_item(item);
 }
 MAM_ALLOC__DECLR void mam_stack_extend(MamStack* stack, mam_int size) {
-	MAM_ALLOC_ASSERT(!(stack->mem_size + size > tape->mem_capacity), "mam_alloc: failed to reallocate memory for stack");
+	MAM_ALLOC_ASSERT(!(stack->mem_size + size > stack->mem_capacity), "mam_alloc: failed to reallocate memory for stack");
 	mam_int pre_stack_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
 
 	stack->mem_size += size;
