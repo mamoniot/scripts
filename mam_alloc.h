@@ -80,22 +80,6 @@ extern "C" {
  #endif
 #endif
 
-#ifndef MAM_ALLOC_NO_STDLIB
- #include <stdlib.h>
- #ifndef MAM_ALLOC_MEMCPY
-  #define MAM_ALLOC_MEMCPY memcpy
- #endif
- #ifndef MAM_ALLOC_MALLOC
-  #define MAM_ALLOC_MALLOC malloc
- #endif
- #ifndef MAM_ALLOC_REALLOC
-  #define MAM_ALLOC_REALLOC realloc
- #endif
- #ifndef MAM_ALLOC_FREE
-  #define MAM_ALLOC_FREE free
- #endif
-#endif
-
 #ifndef MAM_ALLOC_SIZE_T
  #define MAM_ALLOC_SIZE_T int
 #endif
@@ -105,6 +89,13 @@ extern "C" {
 typedef MAM_ALLOC_SIZE_T mam_int;
 typedef MAM_ALLOC_BYTE_T mam_byte;
 
+#ifndef MAM_ALLOC_ALIGNMENT
+ #define MAM_ALLOC_ALIGNMENT sizeof(void*)
+#endif
+
+#ifndef MAM_ALLOC_COOKIE
+ #define MAM_ALLOC_COOKIE 0x44334433
+#endif
 
 #ifdef MAM_ALLOC_STATIC
  #define MAM_ALLOC__DECLR static
@@ -113,9 +104,6 @@ typedef MAM_ALLOC_BYTE_T mam_byte;
 #endif
 #define MAM_ALLOC__DECLS static inline
 
-#ifndef MAM_ALLOC_COOKIE
- #define MAM_ALLOC_COOKIE 0x44334433
-#endif
 
 
 typedef union MamStack {
@@ -135,7 +123,7 @@ typedef union MamRing {
 		mam_int mem_top;
 		mam_int top_item;
 	};
-} MamTape;
+} MamRing;
 
 typedef union MamPool {
 	mam_byte mem[1];
@@ -200,10 +188,10 @@ MAM_ALLOC__DECLS void mam_check_below(void* ptr) {
 
 #define mam_get_ptr(type, allocator, item) (mam_check_below(mam_ptr_add(mam_byte, allocator, item)), mam_ptr_add(type, allocator, item))
 
-#define mam_check_get_external_size(size) (size - 2*sizeof(int))
-#define mam_check_get_internal_size(size) (size + 2*sizeof(int))
-#define mam_check_get_external_item(item) (item +   sizeof(int))
-#define mam_check_get_internal_item(item) (item -   sizeof(int))
+#define mam_check_get_external_size(size) (size - MAM_ALLOC_ALIGNMENT - sizeof(int))
+#define mam_check_get_internal_size(size) (size + MAM_ALLOC_ALIGNMENT + 2*sizeof(int))
+#define mam_check_get_external_item(item) (item + MAM_ALLOC_ALIGNMENT)
+#define mam_check_get_internal_item(item) (item - MAM_ALLOC_ALIGNMENT)
 
 MAM_ALLOC__DECLS void mam_check_mark(void* allocator, mam_int item, mam_int item_size) {
 	//takes internal item and item_size
@@ -235,18 +223,18 @@ MAM_ALLOC__DECLS void mam_check_unmark(void* allocator, mam_int item, mam_int it
 #define mam_check_unmark(allocator, item, item_size) 0
 #endif
 
+#define MAM__STACK_BASE mam_alloc_align(sizeof(MamStack) + sizeof(mam_int))
 
 //////////////////////////////////////////////////////////
 // Stack
 
 MAM_ALLOC__DECLR MamStack* mam_stack_init(void* alloc_ptr, mam_int alloc_size);
-
 MAM_ALLOC__DECLS void mam_stack_reset(MamStack* stack) {
-	stack->mem_size = sizeof(MamStack) + sizeof(mam_int);
+	stack->mem_size = MAM__STACK_BASE;
 }
 
 MAM_ALLOC__DECLS int mam_stack_will_overflow(MamStack* stack, mam_int size) {
-	return stack->mem_size + mam_check_get_internal_size(size) + sizeof(mam_int) > stack->mem_capacity;
+	return stack->mem_size + mam_alloc_align(mam_check_get_internal_size(size) + sizeof(mam_int)) > stack->mem_capacity;
 }
 
 MAM_ALLOC__DECLR mam_int mam_stack_pushi(MamStack* stack, mam_int size);
@@ -261,36 +249,31 @@ MAM_ALLOC__DECLR void mam_stack_extend(MamStack* stack, mam_int size);
 MAM_ALLOC__DECLR void mam_stack_pop(MamStack* stack);
 
 
-MAM_ALLOC__DECLS mam_int mam_stack_get_endi(MamStack* stack) {
-	mam_int pre_stack_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
-	return mam_check_get_external_item(pre_stack_size);
-}
-MAM_ALLOC__DECLS void* mam_stack_get_endn(MamStack* stack) {
-	mam_int item = mam_stack_get_endi(stack);
+MAM_ALLOC__DECLR mam_int mam_stack_get_endi(MamStack* stack, mam_int* ret_size);
+MAM_ALLOC__DECLS void* mam_stack_get_endn(MamStack* stack, mam_int* ret_size) {
+	mam_int item = mam_stack_get_endi(stack, ret_size);
 	return item ? mam_ptr_add(void, stack, item) : 0;
 }
-#define mam_stack_get_end(type, stack) ((type*)mam_stack_get_endn(stack))
+#define mam_stack_get_end(type, stack, ret_size) ((type*)mam_stack_get_endn(stack, ret_size))
 
-MAM_ALLOC__DECLS mam_int mam_stack_get_nexti(MamStack* stack, mam_int item) {
-	item = mam_check_get_internal_item(item);
-	mam_int pre_stack_size = *(mam_ptr_add(mam_int, stack, item) - 1);
-	return mam_check_get_external_item(pre_stack_size);
-}
-MAM_ALLOC__DECLS void* mam_stack_get_nextn(MamStack* stack, void* ptr) {
-	mam_int item = mam_stack_get_nexti(stack, mam_ptr_dist(stack, ptr));
+MAM_ALLOC__DECLR mam_int mam_stack_get_nexti(MamStack* stack, mam_int item, mam_int* ret_size);
+MAM_ALLOC__DECLS void* mam_stack_get_nextn(MamStack* stack, void* ptr, mam_int* ret_size) {
+	mam_int item = mam_stack_get_nexti(stack, mam_ptr_dist(stack, ptr), ret_size);
 	return item ? mam_ptr_add(void, stack, item) : 0;
 }
-#define mam_stack_get_next(type, stack, ptr) ((type*)mam_stack_get_nextn(stack, ptr))
+#define mam_stack_get_next(type, stack, ptr, ret_size) ((type*)mam_stack_get_nextn(stack, ptr, ret_size))
 
 
 //////////////////////////////////////////////////////////
 // Ring
 
-MAM_ALLOC__DECLR MamRing* mam_ring_init(void* alloc_ptr, mam_int alloc_size);
+#define MAM__RING_BASE mam_alloc_align(sizeof(MamRing))
+#define MAM__HIGH_BIT (((mam_int)1)<<(8*sizeof(mam_int) - 1))
 
+MAM_ALLOC__DECLR MamRing* mam_ring_init(void* alloc_ptr, mam_int alloc_size);
 MAM_ALLOC__DECLS void mam_ring_reset(MamRing* ring) {
-	ring->mem_top = sizeof(MamRing);
-	ring->mem_bottom = sizeof(MamRing);
+	ring->mem_top = MAM__RING_BASE;
+	ring->mem_bottom = ring->mem_top;
 	ring->mem_used = 0;
 }
 
@@ -304,29 +287,19 @@ MAM_ALLOC__DECLS void* mam_ring_pushn(MamRing* ring, mam_int size) {
 
 MAM_ALLOC__DECLR void mam_ring_pop(MamRing* ring);
 
-MAM_ALLOC__DECLS mam_int mam_ring_get_endi(MamRing* ring) {
-	return (ring->mem_used > 0) ? mam_check_get_external_item(ring->mem_bottom + sizeof(mam_int)) : 0;
-}
-MAM_ALLOC__DECLS void* mam_ring_get_endn(MamRing* ring) {
-	mam_int item = mam_ring_get_endi(ring);
+MAM_ALLOC__DECLR mam_int mam_ring_get_endi(MamRing* ring, mam_int* ret_size);
+MAM_ALLOC__DECLS void* mam_ring_get_endn(MamRing* ring, mam_int* ret_size) {
+	mam_int item = mam_ring_get_endi(ring, ret_size);
 	return item ? mam_ptr_add(void, ring, item) : 0;
 }
-#define mam_ring_get_end(type, ring) ((type*)mam_ring_get_endn(ring))
+#define mam_ring_get_end(type, ring, ret_size) ((type*)mam_ring_get_endn(ring, ret_size))
 
-MAM_ALLOC__DECLS mam_int mam_ring_get_nexti(MamRing* ring, mam_int item) {
-	item = mam_check_get_internal_item(item) - sizeof(mam_int);
-	mam_int alloc_size = *mam_ptr_add(mam_int, ring, item);
-	mam_int next = item + alloc_size;;
-	if(next == ring->mem_capacity) {
-		next = sizeof(MamRing);
-	}
-	return (next == ring->mem_top) ? 0 : mam_check_get_external_item(next + sizeof(mam_int));
-}
-MAM_ALLOC__DECLS void* mam_ring_get_nextn(MamRing* ring, void* ptr) {
-	mam_int item = mam_ring_get_nexti(ring, mam_ptr_dist(ring, ptr));
+MAM_ALLOC__DECLR mam_int mam_ring_get_nexti(MamRing* ring, mam_int item, mam_int* ret_size);
+MAM_ALLOC__DECLS void* mam_ring_get_nextn(MamRing* ring, void* ptr, mam_int* ret_size) {
+	mam_int item = mam_ring_get_nexti(ring, mam_ptr_dist(ring, ptr), ret_size);
 	return item ? mam_ptr_add(void, ring, item) : 0;
 }
-#define mam_ring_get_next(type, ring, ptr) ((type*)mam_ring_get_nextn(stack, ptr))
+#define mam_ring_get_next(type, ring, ptr, ret_size) ((type*)mam_ring_get_nextn(stack, ptr, ret_size))
 
 
 //////////////////////////////////////////////////////////
@@ -356,14 +329,6 @@ MAM_ALLOC__DECLS void mam_pool_free(MamPool* pool, void* ptr) {
 
 //////////////////////////////////////////////////////////
 // Heap
-
-MAM_ALLOC__DECLR MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size);
-MAM_ALLOC__DECLS void mam_heap_reset(MamPool* pool) {
-	heap->mem_size = sizeof(MamHeap);
-	heap->head_block = 0;
-	heap->end_block = 0;
-}
-
 typedef struct Mam__Block {
 	mam_int pre;//points to the previous block in memory, is 0 for the first block
 	mam_int size;//the current size of the memory in this block
@@ -376,13 +341,22 @@ MAM_ALLOC__DECLS void mam__block_set_next(Mam__Block* block, mam_int cur_i, mam_
 MAM_ALLOC__DECLS mam_int mam__block_get_next(Mam__Block* block, mam_int cur_i) {
 	return block->size + cur_i;
 }
-MAM_ALLOC__DECLS mam_int mam__heap_correct_size(mam_int size) {
-	//rounds to a multiple of sizeof(Mam__Block), then adds sizeof(Mam__Block) extra.
-	return sizeof(Mam__Block)*((size + sizeof(Mam__Block) - 1)/sizeof(Mam__Block) + 1);
+
+#define MAM_HEAP_ALIGNMENT mam_alloc_align(sizeof(Mam__Block))
+MAM_ALLOC__DECLS mam_int mam_heap_align(mam_int size) {
+	mam_int alignment = MAM_HEAP_ALIGNMENT;
+	return alignment*((size + alignment - 1)/alignment + 1);
+}
+
+MAM_ALLOC__DECLR MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size);
+MAM_ALLOC__DECLS void mam_heap_reset(MamHeap* heap) {
+	heap->mem_size = mam_alloc_align(sizeof(MamHeap));
+	heap->head_block = 0;
+	heap->end_block = 0;
 }
 
 MAM_ALLOC__DECLS int mam_heap_will_overflow(MamHeap* heap, mam_int size) {
-	return heap->mem_size + mam__heap_correct_size(mam_check_get_internal_size(size)) > heap->mem_capacity;
+	return heap->mem_size + mam_heap_align(mam_check_get_internal_size(size)) > heap->mem_capacity;
 }
 
 MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size);
@@ -396,119 +370,187 @@ MAM_ALLOC__DECLS void mam_heap_free(MamHeap* heap, void* ptr) {
 	mam_heap_freei(heap, mam_ptr_dist(heap, ptr));
 }
 
-MAM_ALLOC__DECLR mam_int mam_heap_realloci(MamHeap* heap, mam_int item, mam_int size);
-MAM_ALLOC__DECLS void* mam_heap_reallocn(MamHeap* heap, void* ptr, mam_int size) {
-	return mam_ptr_add(void, heap, mam_heap_realloci(heap, mam_ptr_dist(heap, ptr), size));
-}
-#define mam_heap_realloc(type, heap, ptr, size) ((type*)mam_heap_reallocn(heap, ptr, sizeof(type)*(size)))
-
 #endif
 
 #ifdef MAM_ALLOC_IMPLEMENTATION
 #undef MAM_ALLOC_IMPLEMENTATION
 
-
+MAM_ALLOC__DECLS mam_int mam_alloc_align(mam_int a) {
+	//raises a to the nearest multiple of MAM_ALLOC_ALIGNMENT
+	return MAM_ALLOC_ALIGNMENT*((a + (MAM_ALLOC_ALIGNMENT - 1))/MAM_ALLOC_ALIGNMENT);
+}
 MAM_ALLOC__DECLR MamStack* mam_stack_init(void* alloc_ptr, mam_int alloc_size) {
 	MamStack* stack = (MamStack*)alloc_ptr;
-	stack->mem_size = sizeof(MamStack) + sizeof(mam_int);
+	stack->mem_size = MAM__STACK_BASE;
 	stack->mem_capacity = alloc_size;
-	//place 0 on the stack so invalid pops can be detected
-	*(mam_ptr_add(mam_int, stack, stack->mem_size) - 1) = mam_check_get_internal_item(0);
 	return stack;
 }
 
 MAM_ALLOC__DECLR mam_int mam_stack_pushi(MamStack* stack, mam_int size) {
 	MAM_ALLOC_ASSERT(!mam_stack_will_overflow(stack, size), "mam_alloc: stack ran out of memory");
-	size = mam_check_get_internal_size(size);
+	size = mam_check_get_internal_size(size) + sizeof(mam_int);
+	mam_int alloc_size = mam_alloc_align(size);
 
 	mam_int item = stack->mem_size;
-	stack->mem_size += size;
 	//add previous size for pop
-	*mam_ptr_add(mam_int, stack, stack->mem_size) = item;
-	stack->mem_size += sizeof(mam_int);
+	*(mam_ptr_add(mam_int, stack, item + alloc_size) - 1) = size;
+	stack->mem_size += alloc_size;
 
-	mam_check_mark(stack, item, size);
+	mam_check_mark(stack, item, size - sizeof(mam_int));
 	return mam_check_get_external_item(item);
 }
 MAM_ALLOC__DECLR void mam_stack_extend(MamStack* stack, mam_int size) {
 	//TODO: fix error messages and check cookie
 	MAM_ALLOC_ASSERT(!(stack->mem_size + size > stack->mem_capacity), "mam_alloc: stack ran out of memory");
 
-	mam_int pre_stack_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
-	mam_check_unmark(stack, pre_stack_size, stack->mem_size - pre_stack_size - sizeof(mam_int));
+	mam_int pop_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
+	mam_int alloc_size = mam_alloc_align(pop_size);
+	mam_int pop_item = stack->mem_size - alloc_size;
 
-	stack->mem_size += size;
-	mam_check_mark(stack, pre_stack_size, stack->mem_size - pre_stack_size - sizeof(mam_int));
+	MAM_ALLOC_ASSERT(stack->mem_size > MAM__STACK_BASE, "mam_alloc: attempt to extend stack when stack is empty");
+	mam_check_unmark(stack, pop_item, pop_size - sizeof(mam_int));
+
+	stack->mem_size -= alloc_size;
+
+	mam_int new_size = pop_size + size;
+	mam_int new_alloc_size = mam_alloc_align(new_size);
 	//copy over previous size for pop
-	*(mam_ptr_add(mam_int, stack, stack->mem_size) - 1) = pre_stack_size;
+	*(mam_ptr_add(mam_int, stack, pop_item + new_alloc_size) - 1) = new_size;
+	stack->mem_size += new_alloc_size;
+
+	mam_check_mark(stack, pop_item, new_size - sizeof(mam_int));
 }
 MAM_ALLOC__DECLR void mam_stack_pop(MamStack* stack) {
-	mam_int pre_stack_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
+	mam_int pop_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
+	mam_int alloc_size = mam_alloc_align(pop_size);
+	mam_int pop_item = stack->mem_size - alloc_size;
 
-	MAM_ALLOC_ASSERT(pre_stack_size > 0, "mam_alloc: attempt to pop stack when stack is empty");
-	mam_check_unmark(stack, pre_stack_size, stack->mem_size - pre_stack_size - sizeof(mam_int));
+	MAM_ALLOC_ASSERT(stack->mem_size > MAM__STACK_BASE, "mam_alloc: attempt to pop stack when stack is empty");
+	mam_check_unmark(stack, pop_item, pop_size - sizeof(mam_int));
 
-	stack->mem_size = pre_stack_size;
+	stack->mem_size -= alloc_size;
 }
+
+MAM_ALLOC__DECLR mam_int mam_stack_get_endi(MamStack* stack, mam_int* ret_size) {
+	mam_int pop_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
+	if(pop_size >= 0) {
+		mam_int alloc_size = mam_alloc_align(pop_size);
+		mam_int pop_item = stack->mem_size - alloc_size;
+		if(ret_size) *ret_size = pop_size - sizeof(mam_int);
+		return mam_check_get_external_item(pop_item);
+	} else {
+		return 0;
+	}
+}
+MAM_ALLOC__DECLR mam_int mam_stack_get_nexti(MamStack* stack, mam_int item, mam_int* ret_size) {
+	item = mam_check_get_internal_item(item);
+	mam_int pop_size = *(mam_ptr_add(mam_int, stack, item) - 1);
+	if(pop_size >= 0) {
+		mam_int alloc_size = mam_alloc_align(pop_size);
+		mam_int pop_item = stack->mem_size - alloc_size;
+		if(ret_size) *ret_size = pop_size - sizeof(mam_int);
+		return mam_check_get_external_item(pop_item);
+	} else {
+		return 0;
+	}
+}
+
 
 
 MAM_ALLOC__DECLR MamRing* mam_ring_init(void* alloc_ptr, mam_int alloc_size) {
 	MamRing* ring = (MamRing*)alloc_ptr;
 	ring->mem_used = 0;
-	ring->mem_top = sizeof(MamRing);
-	ring->mem_bottom = sizeof(MamRing);
+	ring->mem_top = MAM__RING_BASE;
+	ring->mem_bottom = MAM__RING_BASE;
 	ring->mem_capacity = alloc_size;
 	return ring;
 }
 MAM_ALLOC__DECLR int mam_ring_will_overflow(MamRing* ring, mam_int size) {
-	mam_int alloc_size = mam_check_get_internal_size(size) + sizeof(mam_int);
+	mam_int alloc_size = mam_alloc_align(mam_check_get_internal_size(size) + sizeof(mam_int));
 	mam_int item = ring->mem_top;
 	if(item + alloc_size > ring->mem_capacity) {
-		alloc_size += ring->mem_capacity - item;
+		mam_int padding_size = ring->mem_capacity - item;
+		alloc_size += padding_size;
 	}
 
 	return ring->mem_used + alloc_size > ring->mem_capacity - sizeof(MamRing);
 }
 MAM_ALLOC__DECLR mam_int mam_ring_pushi(MamRing* ring, mam_int size) {
 	MAM_ALLOC_ASSERT(!mam_ring_will_overflow(ring, size), "mam_alloc: ring ran out of memory");
-	size = mam_check_get_internal_size(size);
+	size = mam_check_get_internal_size(size) + sizeof(mam_int);
+	mam_int alloc_size = mam_alloc_align(size);
 
 	mam_int item = ring->mem_top;
-	mam_int alloc_size = size + sizeof(mam_int);
 	if(item + alloc_size > ring->mem_capacity) {
 		//this allocation would trail off the end of the ring's memory, push it to the beginning
-		//pad the previous alloc so it perfectly fills the end of memory
+		//mark the previous allocation as the last
+		*mam_ptr_add(mam_int, ring, ring->top_item) |= MAM__HIGH_BIT;
 		mam_int padding_size = ring->mem_capacity - item;
-		*mam_ptr_add(mam_int, ring, ring->top_item) += padding_size;
 		ring->mem_used += padding_size;
 
-		item = sizeof(MamRing);
+		item = MAM__RING_BASE;
 	}
-	*mam_ptr_add(mam_int, ring, item) = alloc_size;//store the size of this allocation before it
+	*mam_ptr_add(mam_int, ring, item) = size;//store the size of this allocation before it
 	ring->mem_used += alloc_size;
 	ring->top_item = item;
 	ring->mem_top = item + alloc_size;
 
 	item += sizeof(mam_int);
-	mam_check_mark(ring, item, size);
+	mam_check_mark(ring, item, size - sizeof(mam_int));
 	return mam_check_get_external_item(item);
 }
 MAM_ALLOC__DECLR void mam_ring_pop(MamRing* ring) {
 	MAM_ALLOC_ASSERT(ring->mem_used > 0, "mam_alloc: attempt to pop from empty ring");
-	mam_int alloc_size = *mam_ptr_add(mam_int, ring, ring->mem_bottom);
-	ring->mem_bottom = (ring->mem_bottom + alloc_size - sizeof(MamRing))%(ring->mem_capacity - sizeof(MamRing)) + sizeof(MamRing);
+	mam_int pop_size = *mam_ptr_add(mam_int, ring, ring->mem_bottom);
+	mam_int alloc_size = mam_alloc_align(pop_size);
+	mam_int item = ring->mem_bottom;
+	if(pop_size & MAM__HIGH_BIT) {
+		ring->mem_bottom = MAM__RING_BASE;
+		pop_size &= ~MAM__HIGH_BIT;
+	} else {
+		ring->mem_bottom += alloc_size;
+	}
 	ring->mem_used -= alloc_size;
+	mam_check_unmark(ring, item, pop_size - sizeof(mam_int));
+}
+
+MAM_ALLOC__DECLR mam_int mam_ring_get_endi(MamRing* ring, mam_int* ret_size) {
+	if(ring->mem_used > 0) {
+		if(ret_size) *ret_size = *mam_ptr_add(mam_int, ring, ring->mem_bottom) - sizeof(mam_int);
+		return mam_check_get_external_item(ring->mem_bottom + sizeof(mam_int));
+	} else {
+		return 0;
+	}
+}
+MAM_ALLOC__DECLR mam_int mam_ring_get_nexti(MamRing* ring, mam_int item, mam_int* ret_size) {
+	item = mam_check_get_internal_item(item) - sizeof(mam_int);
+	mam_int alloc_size = *mam_ptr_add(mam_int, ring, item);
+	mam_int next = item + alloc_size;;
+	if(next == ring->mem_capacity) {
+		next = sizeof(MamRing);
+	}
+	if(next == ring->mem_top) {
+		return 0;
+	} else {
+		if(ret_size) *ret_size = *mam_ptr_add(mam_int, ring, next) - sizeof(mam_int);
+		return mam_check_get_external_item(next + sizeof(mam_int));
+	}
 }
 
 
 
 MAM_ALLOC__DECLR MamPool* mam_pool_initn(void* alloc_ptr, mam_int alloc_size, mam_int item_size) {
 	item_size = mam_check_get_internal_size(item_size);
+	item_size = (item_size > sizeof(mam_int)) ? item_size : sizeof(mam_int);
 	MamPool* pool = (MamPool*)alloc_ptr;
 	pool->first_unused = 0;
-	pool->mem_size = sizeof(MamPool);
+	pool->mem_size = mam_alloc_align(sizeof(MamPool));
 	pool->mem_capacity = alloc_size;
-	pool->item_size = (item_size > sizeof(mam_int)) ? item_size : sizeof(mam_int);
+	#ifdef MAM_ALLOC_DEBUG
+	pool->item_size = item_size;
+	#else
+	pool->item_size = mam_alloc_align(item_size);
+	#endif
 	return pool;
 }
 
@@ -518,9 +560,12 @@ MAM_ALLOC__DECLR mam_int mam_pool_alloci(MamPool* pool) {
 	if(item) {
 		pool->first_unused = *mam_ptr_add(mam_int, pool, item);
 	} else {
-		mam_int size = pool->item_size;
 		item = pool->mem_size;
-		pool->mem_size += size;
+		#ifdef MAM_ALLOC_DEBUG
+		pool->mem_size += mam_alloc_align(pool->item_size);
+		#else
+		pool->mem_size += pool->item_size;
+		#endif
 	}
 	mam_check_mark(pool, item, pool->item_size);
 	return mam_check_get_external_item(item);
@@ -537,7 +582,7 @@ MAM_ALLOC__DECLR void mam_pool_freei(MamPool* pool, mam_int item) {
 
 MAM_ALLOC__DECLR MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size) {
 	MamHeap* heap = (MamHeap*)alloc_ptr;
-	heap->mem_size = sizeof(MamHeap);
+	heap->mem_size = mam_alloc_align(sizeof(MamHeap));
 	heap->mem_capacity = alloc_size;
 	heap->head_block = 0;
 	heap->end_block = 0;
@@ -546,7 +591,7 @@ MAM_ALLOC__DECLR MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size) {
 
 MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size) {
 	size = mam_check_get_internal_size(size);
-	size = mam__heap_correct_size(size);
+	size = mam_heap_align(size);
 	mam_int original_i = heap->head_block;
 	if(original_i) {
 		mam_int cur_i = original_i;
@@ -565,8 +610,8 @@ MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size) {
 				}
 				cur_block->free_pre = 0;
 
-				mam_check_mark(heap, cur_i + sizeof(Mam__Block), size - sizeof(Mam__Block));
-				return mam_check_get_external_item(cur_i + sizeof(Mam__Block));
+				mam_check_mark(heap, cur_i + MAM_HEAP_ALIGNMENT, size - MAM_HEAP_ALIGNMENT);
+				return mam_check_get_external_item(cur_i + MAM_HEAP_ALIGNMENT);
 			} else if(cur_block->size > size) {
 				mam_int pre_i = cur_block->free_pre;
 
@@ -591,8 +636,8 @@ MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size) {
 				}
 				cur_block->free_pre = 0;
 
-				mam_check_mark(heap, cur_i + sizeof(Mam__Block), size - sizeof(Mam__Block));
-				return mam_check_get_external_item(cur_i + sizeof(Mam__Block));
+				mam_check_mark(heap, cur_i + MAM_HEAP_ALIGNMENT, size - MAM_HEAP_ALIGNMENT);
+				return mam_check_get_external_item(cur_i + MAM_HEAP_ALIGNMENT);
 			}
 			cur_i = next_i;
 		} while(original_i != cur_i);
@@ -610,13 +655,13 @@ MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size) {
 	heap->mem_size += size;
 	heap->end_block = item;
 
-	mam_check_mark(heap, item + sizeof(Mam__Block), size - sizeof(Mam__Block));
-	return mam_check_get_external_item(item + sizeof(Mam__Block));
+	mam_check_mark(heap, item + MAM_HEAP_ALIGNMENT, size - MAM_HEAP_ALIGNMENT);
+	return mam_check_get_external_item(item + MAM_HEAP_ALIGNMENT);
 }
 
 MAM_ALLOC__DECLR void mam_heap_freei(MamHeap* heap, mam_int item) {
 	item = mam_check_get_internal_item(item);
-	mam_int cur_i = item - sizeof(Mam__Block);
+	mam_int cur_i = item - MAM_HEAP_ALIGNMENT;
 	Mam__Block* cur_block = mam_ptr_add(Mam__Block, heap, cur_i);
 	mam_int pre_i = cur_block->pre;
 	Mam__Block* pre_block = mam_ptr_add(Mam__Block, heap, pre_i);
@@ -624,7 +669,7 @@ MAM_ALLOC__DECLR void mam_heap_freei(MamHeap* heap, mam_int item) {
 	Mam__Block* next_block = mam_ptr_add(Mam__Block, heap, next_i);
 
 	MAM_ALLOC_ASSERT(!cur_block->free_pre, "mam_alloc: attempted to free freed memory");
-	mam_check_unmark(heap, item, cur_block->size - sizeof(Mam__Block));
+	mam_check_unmark(heap, item, cur_block->size - MAM_HEAP_ALIGNMENT);
 
 	mam_int head_i = heap->head_block;
 	if(pre_i && pre_block->free_pre) {//is free, combine
@@ -699,75 +744,6 @@ MAM_ALLOC__DECLR void mam_heap_freei(MamHeap* heap, mam_int item) {
 		cur_block->free_next = cur_i;
 	}
 }
-
-MAM_ALLOC__DECLR mam_int mam_heap_realloci(MamHeap* heap, mam_int item, mam_int size) {
-	//TODO: add more memory checks
-	// mam_checki(heap, item, size);
-	item = mam_check_get_internal_item(item);
-	size = mam_check_get_internal_size(size);
-	mam_int cur_i = item - sizeof(Mam__Block);
-	Mam__Block* cur_block = mam_ptr_add(Mam__Block, heap, cur_i);
-	MAM_ALLOC_ASSERT(!cur_block->free_pre, "mam_alloc: attempted to realloc freed memory");
-	if(cur_block->size >= size) {
-		return mam_check_get_external_item(item);
-	} else {
-		/*
-		//check if the block after has space
-		mam_int next_i = mam__block_get_next(cur_block, cur_i);
-		Mam__Block* next_block = mam_ptr_add(Mam__Block, heap, next_i);
-		mam_int next_free_i = next_block->free_next;
-		mam_int pre_free_i = next_block->free_pre;
-		if(pre_free_i && next_block->size + cur_block->size >= size) {
-			//next block is free and has enough space, use it.
-			cur_block->size = size;
-			if(next_block->size + cur_block->size == size) {//remove next_block from free list
-				if(next_i == next_free_i) {//all items would be removed from free list
-					heap->head_block = 0;
-				} else {
-					heap->head_block = next_free_i;
-					mam_ptr_add(Mam__Block, heap, pre_free_i)->free_next = next_free_i;
-					mam_ptr_add(Mam__Block, heap, next_free_i)->free_pre = pre_free_i;
-				}
-				cur_block->free_pre = 0;
-
-				mam_check_mark(heap, item, size - sizeof(Mam__Block));
-			} else {//shorten next_block to a fragment of itself
-				mam_int fragment_i = cur_i + size;
-				Mam__Block* fragment_block = mam_ptr_add(Mam__Block, heap, fragment_i);
-				fragment_block->pre = cur_i;
-				fragment_block->size = next_block->size + cur_block->size - size;
-				if(heap->end_block == next_i) {
-					heap->end_block = fragment_i;
-				}
-
-				if(next_i == pre_free_i) {//only one item in free list
-					heap->head_block = fragment_i;
-					fragment_block->free_pre = fragment_i;
-					fragment_block->free_next = fragment_i;
-				} else {
-					fragment_block->free_pre = pre_free_i;
-					fragment_block->free_next = next_free_i;
-					mam_ptr_add(Mam__Block, heap, pre_free_i)->free_next = fragment_i;
-					mam_ptr_add(Mam__Block, heap, next_free_i)->free_pre = fragment_i;
-				}
-			}
-			return mam_check_get_external_item(item);
-		} else if(cur_i == heap->end_block) {
-			MAM_ALLOC_ASSERT(!(heap->mem_size + size - cur_block->size > heap->mem_capacity), "mam_alloc: heap has run out of memory");
-			heap->mem_size += size - cur_block->size;
-			cur_block->size = size;
-			return mam_check_get_external_item(item);
-		} else {
-			*/
-			//do the classic alloc-copy-free reallocation
-			mam_int new_item = mam_heap_alloci(heap, mam_check_get_external_size(size));
-			MAM_ALLOC_MEMCPY(mam_ptr_add(void, heap, new_item), mam_ptr_add(void, heap, item), cur_block->size);
-			mam_heap_freei(heap, mam_check_get_external_item(item));
-			return new_item;
-		// }
-	}
-}
-
 
 #endif
 
