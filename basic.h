@@ -2,7 +2,6 @@
 #ifndef BASIC__H_INCLUDE
 #define BASIC__H_INCLUDE
 
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
