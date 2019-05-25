@@ -8,6 +8,16 @@ extern "C" {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // An indev custom allocators library
 // TODO: Build a fuzzer for the heap
+// TODO: Full documentation
+//
+// options:
+// MAM_ALLOC_STATIC
+// MAM_ALLOC_DEBUG
+// MAM_ALLOC_ASSERT
+// MAM_ALLOC_SIZE_T
+// MAM_ALLOC_BYTE_T
+// MAM_ALLOC_ALIGNMENT
+// MAM_ALLOC_COOKIE
 //
 // stack:
 // mam_stack_init
@@ -63,10 +73,21 @@ extern "C" {
 // mam_heap_reallocn
 // mam_heap_realloc
 //
+// checker:
+// mam_get_ptr
+// mam_ptr_add
+// mam_ptr_dist
+// mam_checki
+// mam_check
+// mam_check_belowi
+// mam_check_below
 //
-//
-//
-//
+// mam_check_get_external_size
+// mam_check_get_internal_size
+// mam_check_get_external_item
+// mam_check_get_internal_item
+// mam_check_mark
+// mam_check_unmark
 //
 //
 
@@ -165,7 +186,7 @@ They catch the most common bugs such as buffer overflows or use-after-free,
 and they never trigger an assert unless an actual memory bug occurred.
 This works by placing memory cookies above and below every allocated buffer,
 and checking their existance regularly.
-The default cookie is 0x44334433 == 1144210483 == 3D3D
+The default cookie is 0x44334433 == 1144210483 == "3D3D"
 ********************************************************************************/
 MAM_ALLOC__DECLS void mam_checki(void* allocator, mam_int item, mam_int item_size) {
 	MAM_ALLOC_ASSERT(*((int*)((mam_byte*)allocator + item) - 1) == MAM_ALLOC_COOKIE, mam__underflow_msg);
@@ -343,7 +364,7 @@ MAM_ALLOC__DECLS mam_int mam__block_get_next(Mam__Block* block, mam_int cur_i) {
 }
 
 #define MAM_HEAP_ALIGNMENT mam_alloc_align(sizeof(Mam__Block))
-MAM_ALLOC__DECLS mam_int mam_heap_align(mam_int size) {
+MAM_ALLOC__DECLS mam_int mam__heap_align(mam_int size) {
 	mam_int alignment = MAM_HEAP_ALIGNMENT;
 	return alignment*((size + alignment - 1)/alignment + 1);
 }
@@ -356,7 +377,7 @@ MAM_ALLOC__DECLS void mam_heap_reset(MamHeap* heap) {
 }
 
 MAM_ALLOC__DECLS int mam_heap_will_overflow(MamHeap* heap, mam_int size) {
-	return heap->mem_size + mam_heap_align(mam_check_get_internal_size(size)) > heap->mem_capacity;
+	return heap->mem_size + mam__heap_align(mam_check_get_internal_size(size)) > heap->mem_capacity;
 }
 
 MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size);
@@ -591,7 +612,7 @@ MAM_ALLOC__DECLR MamHeap* mam_heap_init(void* alloc_ptr, mam_int alloc_size) {
 
 MAM_ALLOC__DECLR mam_int mam_heap_alloci(MamHeap* heap, mam_int size) {
 	size = mam_check_get_internal_size(size);
-	size = mam_heap_align(size);
+	size = mam__heap_align(size);
 	mam_int original_i = heap->head_block;
 	if(original_i) {
 		mam_int cur_i = original_i;
