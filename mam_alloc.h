@@ -209,24 +209,25 @@ MAM_ALLOC__DECLS void mam_check_below(void* ptr) {
 
 #define mam_get_ptr(type, allocator, item) (mam_check_below(mam_ptr_add(mam_byte, allocator, item)), mam_ptr_add(type, allocator, item))
 
-#define mam_check_get_external_size(size) (size - MAM_ALLOC_ALIGNMENT - sizeof(int))
+#define mam_check_get_external_size(size) (size - MAM_ALLOC_ALIGNMENT - 2*sizeof(int))
 #define mam_check_get_internal_size(size) (size + MAM_ALLOC_ALIGNMENT + 2*sizeof(int))
 #define mam_check_get_external_item(item) (item + MAM_ALLOC_ALIGNMENT)
 #define mam_check_get_internal_item(item) (item - MAM_ALLOC_ALIGNMENT)
 
 MAM_ALLOC__DECLS void mam_check_mark(void* allocator, mam_int item, mam_int item_size) {
 	//takes internal item and item_size
-	*mam_ptr_add(int, allocator, item) = MAM_ALLOC_COOKIE;
-	*(mam_ptr_add(int, allocator, item + item_size) - 1) = MAM_ALLOC_COOKIE;
+	item = mam_check_get_external_item(item);
+	item_size = mam_check_get_external_size(item_size);
+	*mam_ptr_add(int, allocator, item - sizeof(int)) = MAM_ALLOC_COOKIE;
+	*mam_ptr_add(int, allocator, item + item_size) = MAM_ALLOC_COOKIE;
 }
 MAM_ALLOC__DECLS void mam_check_unmark(void* allocator, mam_int item, mam_int item_size) {
 	//takes internal item and item_size
-	int* bot_cookie = mam_ptr_add(int, allocator, item);
-	int* top_cookie = mam_ptr_add(int, allocator, item + item_size) - 1;
-	MAM_ALLOC_ASSERT(*bot_cookie == MAM_ALLOC_COOKIE, mam__underflow_msg);
-	MAM_ALLOC_ASSERT(*top_cookie == MAM_ALLOC_COOKIE, mam__overflow_msg);
-	*bot_cookie = 0;
-	*top_cookie = 0;
+	item = mam_check_get_external_item(item);
+	item_size = mam_check_get_external_size(item_size);
+	mam_checki(allocator, item, item_size);
+	*mam_ptr_add(int, allocator, item - sizeof(int)) = 0;
+	*mam_ptr_add(int, allocator, item + item_size) = 0;
 }
 
 #else
@@ -244,10 +245,11 @@ MAM_ALLOC__DECLS void mam_check_unmark(void* allocator, mam_int item, mam_int it
 #define mam_check_unmark(allocator, item, item_size) 0
 #endif
 
-#define MAM__STACK_BASE mam_alloc_align(sizeof(MamStack) + sizeof(mam_int))
 
 //////////////////////////////////////////////////////////
 // Stack
+
+#define MAM__STACK_BASE mam_alloc_align(sizeof(MamStack) + sizeof(mam_int))
 
 MAM_ALLOC__DECLR MamStack* mam_stack_init(void* alloc_ptr, mam_int alloc_size);
 MAM_ALLOC__DECLS void mam_stack_reset(MamStack* stack) {
@@ -288,7 +290,7 @@ MAM_ALLOC__DECLS void* mam_stack_get_nextn(MamStack* stack, void* ptr, mam_int* 
 //////////////////////////////////////////////////////////
 // Ring
 
-#define MAM__RING_BASE mam_alloc_align(sizeof(MamRing))
+#define MAM__RING_BASE (mam_alloc_align(sizeof(MamRing) + sizeof(mam_int)) - sizeof(mam_int))
 #define MAM__HIGH_BIT (((mam_int)1)<<(8*sizeof(mam_int) - 1))
 
 MAM_ALLOC__DECLR MamRing* mam_ring_init(void* alloc_ptr, mam_int alloc_size);
@@ -320,7 +322,7 @@ MAM_ALLOC__DECLS void* mam_ring_get_nextn(MamRing* ring, void* ptr, mam_int* ret
 	mam_int item = mam_ring_get_nexti(ring, mam_ptr_dist(ring, ptr), ret_size);
 	return item ? mam_ptr_add(void, ring, item) : 0;
 }
-#define mam_ring_get_next(type, ring, ptr, ret_size) ((type*)mam_ring_get_nextn(stack, ptr, ret_size))
+#define mam_ring_get_next(type, ring, ptr, ret_size) ((type*)mam_ring_get_nextn(ring, ptr, ret_size))
 
 
 //////////////////////////////////////////////////////////
@@ -422,19 +424,20 @@ MAM_ALLOC__DECLR mam_int mam_stack_pushi(MamStack* stack, mam_int size) {
 }
 MAM_ALLOC__DECLR void mam_stack_extend(MamStack* stack, mam_int size) {
 	//TODO: fix error messages and check cookie
-	MAM_ALLOC_ASSERT(!(stack->mem_size + size > stack->mem_capacity), "mam_alloc: stack ran out of memory");
 
 	mam_int pop_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
 	mam_int alloc_size = mam_alloc_align(pop_size);
 	mam_int pop_item = stack->mem_size - alloc_size;
 
+	mam_int new_size = pop_size + size;
+	mam_int new_alloc_size = mam_alloc_align(new_size);
+
+	MAM_ALLOC_ASSERT(!(stack->mem_size - alloc_size + new_alloc_size > stack->mem_capacity), "mam_alloc: stack ran out of memory");
+
 	MAM_ALLOC_ASSERT(stack->mem_size > MAM__STACK_BASE, "mam_alloc: attempt to extend stack when stack is empty");
 	mam_check_unmark(stack, pop_item, pop_size - sizeof(mam_int));
 
 	stack->mem_size -= alloc_size;
-
-	mam_int new_size = pop_size + size;
-	mam_int new_alloc_size = mam_alloc_align(new_size);
 	//copy over previous size for pop
 	*(mam_ptr_add(mam_int, stack, pop_item + new_alloc_size) - 1) = new_size;
 	stack->mem_size += new_alloc_size;
@@ -453,25 +456,27 @@ MAM_ALLOC__DECLR void mam_stack_pop(MamStack* stack) {
 }
 
 MAM_ALLOC__DECLR mam_int mam_stack_get_endi(MamStack* stack, mam_int* ret_size) {
-	mam_int pop_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
-	if(pop_size >= 0) {
+	if(stack->mem_size > MAM__STACK_BASE) {
+		mam_int pop_size = *(mam_ptr_add(mam_int, stack, stack->mem_size) - 1);
 		mam_int alloc_size = mam_alloc_align(pop_size);
 		mam_int pop_item = stack->mem_size - alloc_size;
-		if(ret_size) *ret_size = pop_size - sizeof(mam_int);
+		if(ret_size) *ret_size = mam_check_get_external_size(pop_size - sizeof(mam_int));
 		return mam_check_get_external_item(pop_item);
 	} else {
+		if(ret_size) *ret_size = 0;
 		return 0;
 	}
 }
 MAM_ALLOC__DECLR mam_int mam_stack_get_nexti(MamStack* stack, mam_int item, mam_int* ret_size) {
 	item = mam_check_get_internal_item(item);
-	mam_int pop_size = *(mam_ptr_add(mam_int, stack, item) - 1);
-	if(pop_size >= 0) {
+	if(item > MAM__STACK_BASE) {
+		mam_int pop_size = *(mam_ptr_add(mam_int, stack, item) - 1);
 		mam_int alloc_size = mam_alloc_align(pop_size);
-		mam_int pop_item = stack->mem_size - alloc_size;
-		if(ret_size) *ret_size = pop_size - sizeof(mam_int);
+		mam_int pop_item = item - alloc_size;
+		if(ret_size) *ret_size = mam_check_get_external_size(pop_size - sizeof(mam_int));
 		return mam_check_get_external_item(pop_item);
 	} else {
+		if(ret_size) *ret_size = 0;
 		return 0;
 	}
 }
@@ -482,7 +487,7 @@ MAM_ALLOC__DECLR MamRing* mam_ring_init(void* alloc_ptr, mam_int alloc_size) {
 	MamRing* ring = (MamRing*)alloc_ptr;
 	ring->mem_used = 0;
 	ring->mem_top = MAM__RING_BASE;
-	ring->mem_bottom = MAM__RING_BASE;
+	ring->mem_bottom = ring->mem_top;
 	ring->mem_capacity = alloc_size;
 	return ring;
 }
@@ -494,7 +499,7 @@ MAM_ALLOC__DECLR int mam_ring_will_overflow(MamRing* ring, mam_int size) {
 		alloc_size += padding_size;
 	}
 
-	return ring->mem_used + alloc_size > ring->mem_capacity - sizeof(MamRing);
+	return ring->mem_used + alloc_size > ring->mem_capacity - MAM__RING_BASE;
 }
 MAM_ALLOC__DECLR mam_int mam_ring_pushi(MamRing* ring, mam_int size) {
 	MAM_ALLOC_ASSERT(!mam_ring_will_overflow(ring, size), "mam_alloc: ring ran out of memory");
@@ -522,39 +527,47 @@ MAM_ALLOC__DECLR mam_int mam_ring_pushi(MamRing* ring, mam_int size) {
 }
 MAM_ALLOC__DECLR void mam_ring_pop(MamRing* ring) {
 	MAM_ALLOC_ASSERT(ring->mem_used > 0, "mam_alloc: attempt to pop from empty ring");
-	mam_int pop_size = *mam_ptr_add(mam_int, ring, ring->mem_bottom);
-	mam_int alloc_size = mam_alloc_align(pop_size);
 	mam_int item = ring->mem_bottom;
+	mam_int pop_size = *mam_ptr_add(mam_int, ring, item);
+	mam_int alloc_size = mam_alloc_align(pop_size);
 	if(pop_size & MAM__HIGH_BIT) {
+		alloc_size = ring->mem_capacity - item;
 		ring->mem_bottom = MAM__RING_BASE;
 		pop_size &= ~MAM__HIGH_BIT;
 	} else {
 		ring->mem_bottom += alloc_size;
 	}
 	ring->mem_used -= alloc_size;
-	mam_check_unmark(ring, item, pop_size - sizeof(mam_int));
+	if(ring->mem_used <= 0) {
+		ring->mem_bottom = MAM__RING_BASE;
+		ring->mem_top = ring->mem_bottom;
+	}
+	mam_check_unmark(ring, item + sizeof(mam_int), pop_size - sizeof(mam_int));
 }
 
 MAM_ALLOC__DECLR mam_int mam_ring_get_endi(MamRing* ring, mam_int* ret_size) {
 	if(ring->mem_used > 0) {
-		if(ret_size) *ret_size = *mam_ptr_add(mam_int, ring, ring->mem_bottom) - sizeof(mam_int);
+		if(ret_size) *ret_size = mam_check_get_external_size((*mam_ptr_add(mam_int, ring, ring->mem_bottom) & ~MAM__HIGH_BIT) - sizeof(mam_int));
 		return mam_check_get_external_item(ring->mem_bottom + sizeof(mam_int));
 	} else {
+		if(ret_size) *ret_size = 0;
 		return 0;
 	}
 }
 MAM_ALLOC__DECLR mam_int mam_ring_get_nexti(MamRing* ring, mam_int item, mam_int* ret_size) {
 	item = mam_check_get_internal_item(item) - sizeof(mam_int);
-	mam_int alloc_size = *mam_ptr_add(mam_int, ring, item);
-	mam_int next = item + alloc_size;;
-	if(next == ring->mem_capacity) {
+	mam_int size = *mam_ptr_add(mam_int, ring, item);
+	mam_int alloc_size = mam_alloc_align(size);
+	mam_int next = item + alloc_size;
+	if(size & MAM__HIGH_BIT) {
 		next = sizeof(MamRing);
 	}
-	if(next == ring->mem_top) {
-		return 0;
-	} else {
-		if(ret_size) *ret_size = *mam_ptr_add(mam_int, ring, next) - sizeof(mam_int);
+	if(next != ring->mem_top) {
+		if(ret_size) *ret_size = mam_check_get_external_size((*mam_ptr_add(mam_int, ring, next) & ~MAM__HIGH_BIT) - sizeof(mam_int));
 		return mam_check_get_external_item(next + sizeof(mam_int));
+	} else {
+		if(ret_size) *ret_size = 0;
+		return 0;
 	}
 }
 
