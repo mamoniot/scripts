@@ -69,12 +69,9 @@ extern "C" {
 // mam_heap_alloc
 // mam_heap_freei
 // mam_heap_free
-// mam_heap_realloci
-// mam_heap_reallocn
-// mam_heap_realloc
 //
 // checker:
-// mam_get_ptr
+// mam_ptr_get
 // mam_ptr_add
 // mam_ptr_dist
 // mam_checki
@@ -88,7 +85,6 @@ extern "C" {
 // mam_check_get_internal_item
 // mam_check_mark
 // mam_check_unmark
-//
 //
 
 
@@ -151,8 +147,9 @@ typedef union MamPool {
 	struct {
 		mam_int mem_capacity;
 		mam_int mem_size;
-		mam_int first_unused;
 		mam_int item_size;
+		mam_int alloc_size;
+		mam_int first_unused;
 	};
 } MamPool;
 
@@ -170,6 +167,10 @@ typedef union MamHeap {
 
 #define mam_ptr_add(type, ptr, n) ((type*)((mam_byte*)(ptr) + (n)))
 #define mam_ptr_dist(ptr0, ptr1) ((mam_int)((mam_byte*)(ptr1) - (mam_byte*)(ptr0)))
+MAM_ALLOC__DECLS mam_int mam_alloc_align(mam_int a) {
+	//raises a to the nearest multiple of MAM_ALLOC_ALIGNMENT
+	return MAM_ALLOC_ALIGNMENT*((a + (MAM_ALLOC_ALIGNMENT - 1))/MAM_ALLOC_ALIGNMENT);
+}
 
 #ifdef MAM_ALLOC_DEBUG
 
@@ -207,7 +208,7 @@ MAM_ALLOC__DECLS void mam_check_below(void* ptr) {
 
 
 
-#define mam_get_ptr(type, allocator, item) (mam_check_below(mam_ptr_add(mam_byte, allocator, item)), mam_ptr_add(type, allocator, item))
+#define mam_ptr_get(type, allocator, item) (mam_check_below(mam_ptr_add(mam_byte, allocator, item)), mam_ptr_add(type, allocator, item))
 
 #define mam_check_get_external_size(size) (size - MAM_ALLOC_ALIGNMENT - 2*sizeof(int))
 #define mam_check_get_internal_size(size) (size + MAM_ALLOC_ALIGNMENT + 2*sizeof(int))
@@ -234,7 +235,7 @@ MAM_ALLOC__DECLS void mam_check_unmark(void* allocator, mam_int item, mam_int it
 #define mam_checki(allocator, item, item_size) 0
 #define mam_check(ptr, ptr_size) 0
 #define mam_check_below(ptr) 0
-#define mam_get_ptr(type, allocator, item) mam_ptr_add(type, allocator, item)
+#define mam_ptr_get(type, allocator, item) mam_ptr_add(type, allocator, item)
 
 #define mam_check_get_internal_size(size) size
 #define mam_check_get_external_size(size) size
@@ -328,15 +329,32 @@ MAM_ALLOC__DECLS void* mam_ring_get_nextn(MamRing* ring, void* ptr, mam_int* ret
 //////////////////////////////////////////////////////////
 // Pool
 
-MAM_ALLOC__DECLR MamPool* mam_pool_initn(void* alloc_ptr, mam_int alloc_size, mam_int item_size);
+#define MAM__POOL_BASE mam_alloc_align(sizeof(MamPool))
+MAM_ALLOC__DECLR MamPool* mam_pool_init(void* alloc_ptr, mam_int alloc_size, mam_int item_size);
 
 MAM_ALLOC__DECLS void mam_pool_reset(MamPool* pool) {
 	pool->first_unused = 0;
-	pool->mem_size = sizeof(MamPool);
+	pool->mem_size = MAM__POOL_BASE;
 }
 
+
+MAM_ALLOC__DECLS mam_int mam_pool_to_indexi(MamPool* pool, mam_int item) {
+	return (item - MAM__POOL_BASE)/pool->alloc_size;
+}
+MAM_ALLOC__DECLS mam_int mam_pool_to_index(MamPool* pool, void* ptr) {
+	return mam_pool_to_indexi(pool, mam_ptr_dist(pool, ptr));
+}
+MAM_ALLOC__DECLS mam_int mam_pool_from_indexi(MamPool* pool, mam_int i) {
+	return pool->alloc_size*i + MAM__POOL_BASE;
+}
+MAM_ALLOC__DECLS void* mam_pool_from_indexn(MamPool* pool, mam_int i) {
+	return mam_ptr_add(void, pool, mam_pool_from_indexi(pool, i));
+}
+#define mam_pool_from_index(type, pool, i) ((type*)mam_pool_from_indexn(pool, i))
+
+
 MAM_ALLOC__DECLS int mam_pool_will_overflow(MamPool* pool) {
-	return !pool->first_unused && pool->mem_size + pool->item_size > pool->mem_capacity;
+	return !pool->first_unused && pool->mem_size + pool->alloc_size > pool->mem_capacity;
 }
 
 MAM_ALLOC__DECLR mam_int mam_pool_alloci(MamPool* pool);
@@ -398,10 +416,6 @@ MAM_ALLOC__DECLS void mam_heap_free(MamHeap* heap, void* ptr) {
 #ifdef MAM_ALLOC_IMPLEMENTATION
 #undef MAM_ALLOC_IMPLEMENTATION
 
-MAM_ALLOC__DECLS mam_int mam_alloc_align(mam_int a) {
-	//raises a to the nearest multiple of MAM_ALLOC_ALIGNMENT
-	return MAM_ALLOC_ALIGNMENT*((a + (MAM_ALLOC_ALIGNMENT - 1))/MAM_ALLOC_ALIGNMENT);
-}
 MAM_ALLOC__DECLR MamStack* mam_stack_init(void* alloc_ptr, mam_int alloc_size) {
 	MamStack* stack = (MamStack*)alloc_ptr;
 	stack->mem_size = MAM__STACK_BASE;
@@ -573,41 +587,33 @@ MAM_ALLOC__DECLR mam_int mam_ring_get_nexti(MamRing* ring, mam_int item, mam_int
 
 
 
-MAM_ALLOC__DECLR MamPool* mam_pool_initn(void* alloc_ptr, mam_int alloc_size, mam_int item_size) {
-	item_size = mam_check_get_internal_size(item_size);
+MAM_ALLOC__DECLR MamPool* mam_pool_init(void* alloc_ptr, mam_int alloc_size, mam_int item_size) {
 	item_size = (item_size > sizeof(mam_int)) ? item_size : sizeof(mam_int);
 	MamPool* pool = (MamPool*)alloc_ptr;
 	pool->first_unused = 0;
-	pool->mem_size = mam_alloc_align(sizeof(MamPool));
+	pool->mem_size = MAM__POOL_BASE;
 	pool->mem_capacity = alloc_size;
-	#ifdef MAM_ALLOC_DEBUG
 	pool->item_size = item_size;
-	#else
-	pool->item_size = mam_alloc_align(item_size);
-	#endif
+	pool->alloc_size = mam_alloc_align(mam_check_get_internal_size(item_size));
 	return pool;
 }
 
 MAM_ALLOC__DECLR mam_int mam_pool_alloci(MamPool* pool) {
-	MAM_ALLOC_ASSERT(mam_pool_will_overflow(pool), "mam_alloc: pool ran out of memory");
+	MAM_ALLOC_ASSERT(!mam_pool_will_overflow(pool), "mam_alloc: pool ran out of memory");
 	mam_int item = pool->first_unused;
 	if(item) {
 		pool->first_unused = *mam_ptr_add(mam_int, pool, item);
 	} else {
 		item = pool->mem_size;
-		#ifdef MAM_ALLOC_DEBUG
-		pool->mem_size += mam_alloc_align(pool->item_size);
-		#else
-		pool->mem_size += pool->item_size;
-		#endif
+		pool->mem_size += pool->alloc_size;
 	}
-	mam_check_mark(pool, item, pool->item_size);
+	mam_check_mark(pool, item, mam_check_get_internal_size(pool->item_size));
 	return mam_check_get_external_item(item);
 }
 
 MAM_ALLOC__DECLR void mam_pool_freei(MamPool* pool, mam_int item) {
 	item = mam_check_get_internal_item(item);
-	mam_check_unmark(pool, item, pool->item_size);
+	mam_check_unmark(pool, item, mam_check_get_internal_size(pool->item_size));
 
 	*mam_ptr_add(mam_int, pool, item) = pool->first_unused;
 	pool->first_unused = item;

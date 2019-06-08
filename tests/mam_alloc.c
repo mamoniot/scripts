@@ -26,7 +26,7 @@ void stack_fuzzer() {
 			//test mam_stack_push
 			if(!mam_stack_will_overflow(stack, 10*sizeof(int))) {
 				ten_mem_index = mam_stack_pushi(stack, 10*sizeof(int));
-				int* ten_mem = mam_get_ptr(int, stack, ten_mem_index);
+				int* ten_mem = mam_ptr_get(int, stack, ten_mem_index);
 				for(int i = 0; i < 10; i += 1) {
 					ten_mem[i] = 100;
 				}
@@ -63,7 +63,7 @@ void stack_fuzzer() {
 			assert(!mam_stack_will_overflow(stack, mem_left - 4*MAM_ALLOC_ALIGNMENT));
 		} else if(scenario < 60) {
 			//test memory layout independence
-			MamStack* new_stack = (MamStack*)malloc(1000);
+			MamStack* new_stack = (MamStack*)malloc(stack->mem_capacity);
 			memcpy(new_stack, stack, stack->mem_size);//one might imagine copying the stack to a file instead
 			memset(stack, 'x', stack->mem_capacity);
 			free(stack);
@@ -125,7 +125,7 @@ void stack_fuzzer() {
 		assert(cur_total_alloc_mem == total_alloc_mem);
 
 		if(ten_mem_index) {
-			int* ten_mem = mam_get_ptr(int, stack, ten_mem_index);
+			int* ten_mem = mam_ptr_get(int, stack, ten_mem_index);
 			for(int i = 0; i < 10; i += 1) {
 				assert(ten_mem[i] == 100);
 			}
@@ -148,7 +148,7 @@ void ring_fuzzer() {
 			//test mam_ring_push
 			if(!mam_ring_will_overflow(ring, 10*sizeof(int))) {
 				ten_mem_index = mam_ring_pushi(ring, 10*sizeof(int));
-				int* ten_mem = mam_get_ptr(int, ring, ten_mem_index);
+				int* ten_mem = mam_ptr_get(int, ring, ten_mem_index);
 				for(int i = 0; i < 10; i += 1) {
 					ten_mem[i] = 100;
 				}
@@ -164,7 +164,7 @@ void ring_fuzzer() {
 			assert(!mam_ring_will_overflow(ring, mem_left/2 - 4*MAM_ALLOC_ALIGNMENT));
 		} else if(scenario < 50) {
 			//test memory layout independence
-			MamRing* new_ring = (MamRing*)malloc(1000);
+			MamRing* new_ring = (MamRing*)malloc(ring->mem_capacity);
 			memcpy(new_ring, ring, ring->mem_capacity);//one might imagine copying the ring to a file instead
 			memset(ring, 'x', ring->mem_capacity);
 			free(ring);
@@ -226,7 +226,7 @@ void ring_fuzzer() {
 		assert(cur_total_alloc_mem == total_alloc_mem);
 
 		if(ten_mem_index) {
-			int* ten_mem = mam_get_ptr(int, ring, ten_mem_index);
+			int* ten_mem = mam_ptr_get(int, ring, ten_mem_index);
 			for(int i = 0; i < 10; i += 1) {
 				assert(ten_mem[i] == 100);
 			}
@@ -235,10 +235,89 @@ void ring_fuzzer() {
 	free(ring);
 }
 
+void pool_fuzzer() {
+	MamPool* pool = mam_pool_init(malloc(1000), 1000, 10*sizeof(int));
+	int total_allocs = 0;
+	int ten_mem_index = 0;
+
+	srand(12);
+	for(int j = 0; j < 100000; j += 1) {
+		int scenario = rand()%100;
+
+		if(scenario < 15) {
+			//test mam_pool_push
+			if(!mam_pool_will_overflow(pool)) {
+				ten_mem_index = mam_pool_alloci(pool);
+				int* ten_mem = mam_ptr_get(int, pool, ten_mem_index);
+				mam_check(ten_mem, pool->item_size);
+				for(int i = 0; i < 10; i += 1) {
+					ten_mem[i] = 100;
+				}
+				assert(is_aligned(ten_mem_index));
+
+				total_allocs += 1;
+			}
+		} else if(scenario < 45) {
+			//test memory layout independence
+			MamPool* new_pool = (MamPool*)malloc(pool->mem_capacity);
+			memcpy(new_pool, pool, pool->mem_size);//one might imagine copying the pool to a file instead
+			memset(pool, 'x', pool->mem_capacity);
+			free(pool);
+			pool = new_pool;
+		} else if(scenario < 70) {
+			//test push
+			int buffer_size = pool->item_size;
+			if(mam_pool_will_overflow(pool)) {
+				assert(pool->mem_size + buffer_size + 4*MAM_ALLOC_ALIGNMENT >= pool->mem_capacity);
+			} else {
+				char* buffer = mam_pool_alloc(char, pool);
+				mam_check(buffer, buffer_size);
+				buffer[0] = 'a';
+				buffer[buffer_size - 1] = 'b';
+				mam_check(buffer, buffer_size);
+
+				total_allocs += 1;
+			}
+		} else if(scenario < 95) {
+			//test mam_pool_pop
+			if(ten_mem_index) {
+				mam_checki(pool, ten_mem_index, pool->item_size);
+				mam_pool_freei(pool, ten_mem_index);
+
+				total_allocs -= 1;
+				ten_mem_index = 0;
+			}
+		} else if(scenario < 98) {
+			//test different sized allocs
+			mam_pool_init(pool, 1000, 10*sizeof(int) + rand()%64);
+			total_allocs = 0;
+			ten_mem_index = 0;
+		} else {
+			//test mam_pool_reset, and also empty out the pool
+			mam_pool_reset(pool);
+			total_allocs = 0;
+			ten_mem_index = 0;
+		}
+		//check to make sure the entire pool is still correct
+		assert(pool->alloc_size*total_allocs <= pool->mem_size);
+
+		int max_allocs = mam_pool_to_indexi(pool, pool->mem_capacity);
+		assert(total_allocs <= max_allocs);
+
+		if(ten_mem_index) {
+			int* ten_mem = mam_ptr_get(int, pool, ten_mem_index);
+			for(int i = 0; i < 10; i += 1) {
+				assert(ten_mem[i] == 100);
+			}
+		}
+	}
+	free(pool);
+}
+
 int main() {
 	stack_fuzzer();
 	ring_fuzzer();
-
+	pool_fuzzer();
 
 	printf("all tests passed");
 	return 0;

@@ -47,8 +47,8 @@ extern "C" {
  #ifndef PCG_UINT32
   #define PCG_UINT32 unisgned int
  #endif
- #ifndef PCG_INT64
-  #define PCG_INT64 long long
+ #ifndef PCG_UINT64
+  #define PCG_UINT64 unsigned long long
  #endif
 #else
  #include <stdint.h>
@@ -58,8 +58,8 @@ extern "C" {
  #ifndef PCG_UINT32
   #define PCG_UINT32 uint32_t
  #endif
- #ifndef PCG_INT64
-  #define PCG_INT64 int64_t
+ #ifndef PCG_UINT64
+  #define PCG_UINT64 uint64_t
  #endif
 #endif
 ////////////////////////////////////////////////////////////////////////////
@@ -93,7 +93,7 @@ extern "C" {
 //     Generate a uniformly distributed float, r, where 0 < r < 1
 //
 // PCGF:
-//     A PCG_INT32 that contains the entire state of a fast pcg rng.
+//     A PCG_UINT64 that contains the entire state of a fast pcg rng.
 //     Works identically to a normal pcg rng, except it is smaller and
 //     faster, but produces much lower quality numbers.
 //     To get the PCGF varient of any particular function, postfix it with "f"
@@ -101,46 +101,29 @@ extern "C" {
 //
 
 typedef struct PCG {// Only modify the internals if you are a stats PhD.
-    PCG_INT64 state;             // RNG state.  All values are possible.
-    PCG_INT64 inc;               // Controls which RNG sequence (stream) is
+    PCG_UINT64 state;             // RNG state.  All values are possible.
+    PCG_UINT64 inc;               // Controls which RNG sequence (stream) is
                                 // selected. Must *always* be odd.
 } PCG;
-typedef PCG_INT32 PCGF;
+typedef PCG_UINT64 PCGF;
 
 // If you *must* statically initialize it, use this.
 #define PCG_INITIALIZER {0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL}
 
 
-PCG__DECLR void pcg_seeds(PCG* rng, PCG_INT64 initstate, PCG_INT64 sequence);
-PCG__DECLS void pcg_seed(PCG* rng, PCG_INT64 seed);
+PCG__DECLR void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence);
 
 PCG__DECLR PCG_UINT32 pcg_random(PCG* rng);
 
-PCG__DECLR void pcg_advance(PCG* rng, PCG_INT64 delta);
+PCG__DECLR void pcg_advance(PCG* rng, PCG_UINT64 delta);
 
 PCG__DECLR PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper);
-PCG__DECLS float pcg_random_uniform(PCG* rng);
-PCG__DECLS float pcg_random_uniform_in(PCG* rng);
-PCG__DECLS float pcg_random_uniform_ex(PCG* rng);
-
-
-PCG__DECLS void pcg_seedf(PCGF* rng, PCG_INT32 seed);
-
-PCG__DECLR PCG_UINT32 pcg_randomf(PCGF* state);
-
-PCG__DECLS PCG_INT32 pcg_random_inf(PCGF* rng, PCG_INT32 lower, PCG_INT32 upper);
-PCG__DECLS float pcg_random_uniformf(PCGF* rng);
-PCG__DECLS float pcg_random_uniform_inf(PCGF* rng);
-PCG__DECLS float pcg_random_uniform_exf(PCGF* rng);
-
-PCG__DECLS PCG_INT64 pcg__advance_lcg_64(PCG_INT64 state, PCG_INT64 delta, PCG_INT64 cur_mult, PCG_INT64 cur_plus);
 
 
 
-
-PCG__DECLS PCG_INT64 pcg__advance_lcg_64(PCG_INT64 state, PCG_INT64 delta, PCG_INT64 cur_mult, PCG_INT64 cur_plus) {
-    PCG_INT64 acc_mult = 1u;
-    PCG_INT64 acc_plus = 0u;
+PCG__DECLS PCG_UINT64 pcg__advance_lcg_64(PCG_UINT64 state, PCG_UINT64 delta, PCG_UINT64 cur_mult, PCG_UINT64 cur_plus) {
+    PCG_UINT64 acc_mult = 1u;
+    PCG_UINT64 acc_plus = 0u;
     while (delta > 0) {
         if (delta & 1) {
             acc_mult *= cur_mult;
@@ -153,35 +136,71 @@ PCG__DECLS PCG_INT64 pcg__advance_lcg_64(PCG_INT64 state, PCG_INT64 delta, PCG_I
     return acc_mult * state + acc_plus;
 }
 
-PCG__DECLS void pcg_seed(PCG* rng, PCG_INT64 seed) {
+PCG__DECLS void pcg_seed(PCG* rng, PCG_UINT64 seed) {
     pcg_seeds(rng, seed, seed);
 }
 
+PCG__DECLR PCG_UINT64 pcg_random64(PCG* rng) {
+	return (((PCG_UINT64)pcg_random(rng))<<32)|((PCG_UINT64)pcg_random(rng));
+}
+
+#define PCG_INTMAX ((float)(1ll<<32))
 PCG__DECLS float pcg_random_uniform(PCG* rng) {
-	return pcg_random(rng)*(1/(((float)~0u) + 1));
+	return pcg_random(rng)*(1/PCG_INTMAX);
 }
 PCG__DECLS float pcg_random_uniform_in(PCG* rng) {
-	return ((float)pcg_random(rng))/((float)~0u);
+	return ((float)pcg_random(rng))/(PCG_INTMAX - 1);
 }
 PCG__DECLS float pcg_random_uniform_ex(PCG* rng) {
-	return (((float)pcg_random(rng)) + 1)/(((float)~0u) + 2);
+	return (((float)pcg_random(rng)) + 1)/(PCG_INTMAX + 1);
 }
+
+
+
+PCG__DECLR PCG_UINT64 pcg_hash64(PCG_UINT64 n);
+PCG__DECLS PCG_UINT32 pcg_hash(PCG_UINT64 n) {
+	return (PCG_UINT32)pcg_hash64(n);
+}
+
+PCG__DECLS PCG_INT32 pcg_hash_in(PCG_UINT64 n, PCG_INT32 lower, PCG_INT32 upper) {
+	return pcg_random_inf(&n, lower, upper);
+}
+PCG__DECLS float pcg_hash_uniform(PCG_UINT64 n) {
+	return ((float)pcg_hash(n))*(1/PCG_INTMAX);
+}
+PCG__DECLS float pcg_hash_uniform_in(PCG_UINT64 n) {
+	return ((float)pcg_hash(n))/(PCG_INTMAX - 1);
+}
+PCG__DECLS float pcg_hash_uniform_ex(PCG_UINT64 n) {
+	return (((float)pcg_hash(n)) + 1)/(PCG_INTMAX + 1);
+}
+
+
 
 PCG__DECLS void pcg_seedf(PCGF* rng, PCG_INT32 seed) {
 	*rng = seed;
 }
 
+PCG__DECLS PCG_UINT64 pcg_random64f(PCGF* rng) {
+	*rng = pcg_hash64(*rng);
+	return *rng;
+}
+PCG__DECLS PCG_UINT32 pcg_randomf(PCGF* rng) {
+	return (PCG_UINT32)pcg_random64f(rng);
+}
+
+
 PCG__DECLS PCG_INT32 pcg_random_inf(PCGF* rng, PCG_INT32 lower, PCG_INT32 upper) {
 	return (pcg_randomf(rng)%(upper - lower + 1)) + lower;
 }
 PCG__DECLS float pcg_random_uniformf(PCGF* rng) {
-	return ((float)pcg_randomf(rng))*(1/(1ll<<32));
+	return ((float)pcg_randomf(rng))*(1/PCG_INTMAX);
 }
 PCG__DECLS float pcg_random_uniform_inf(PCGF* rng) {
-	return ((float)pcg_randomf(rng))/((1ll<<32) - 1);
+	return ((float)pcg_randomf(rng))/(PCG_INTMAX - 1);
 }
 PCG__DECLS float pcg_random_uniform_exf(PCGF* rng) {
-	return (((float)pcg_randomf(rng)) + 1)/((1ll<<32) + 1);
+	return (((float)pcg_randomf(rng)) + 1)/(PCG_INTMAX + 1);
 }
 
 #endif
@@ -190,14 +209,14 @@ PCG__DECLS float pcg_random_uniform_exf(PCGF* rng) {
 #undef PCG_IMPLEMENTATION
 
 PCG__DECLR PCG_UINT32 pcg_random(PCG* rng) {
-    PCG_INT64 oldstate = rng->state;
+    PCG_UINT64 oldstate = rng->state;
     rng->state = oldstate * 6364136223846793005ULL + rng->inc;
     PCG_INT32 xorshifted = (PCG_INT32)(((oldstate >> 18u) ^ oldstate) >> 27u);
     PCG_INT32 rot = (PCG_INT32)(oldstate >> 59u);
     return (PCG_UINT32)((xorshifted >> rot) | (xorshifted << (((PCG_INT32)(-(PCG_INT32)rot)) & 31)));
 }
 
-PCG__DECLR void pcg_seeds(PCG* rng, PCG_INT64 initstate, PCG_INT64 sequence) {
+PCG__DECLR void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence) {
     rng->state = 0U;
     rng->inc = (sequence << 1u) | 1u;
     pcg_random(rng);
@@ -205,7 +224,7 @@ PCG__DECLR void pcg_seeds(PCG* rng, PCG_INT64 initstate, PCG_INT64 sequence) {
     pcg_random(rng);
 }
 
-PCG__DECLR void pcg_advance(PCG* rng, PCG_INT64 delta) {
+PCG__DECLR void pcg_advance(PCG* rng, PCG_UINT64 delta) {
     rng->state = pcg__advance_lcg_64(rng->state, delta, 6364136223846793005ULL, rng->inc);
 }
 
@@ -241,14 +260,12 @@ PCG__DECLR PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper) {
     }
 }
 
-PCG__DECLR PCG_UINT32 pcg_randomf(PCGF* state) {
+PCG__DECLR PCG_UINT32 pcg_hash64(PCG_UINT64 x) {
 	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
-	PCG_INT32 x = *state;
-	x ^= x << 13;
-	x ^= x >> 17;
-	x ^= x << 5;
-	*state = x;
-	return (PCG_UINT32)x;
+	x ^= x >> 12; // a
+	x ^= x << 25; // b
+	x ^= x >> 27; // c
+	return x*((PCG_UINT64)0x2545F4914F6CDD1D);
 }
 
 #endif
