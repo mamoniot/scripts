@@ -57,4 +57,37 @@ typedef uint64_t uint64;
  #define for_each_in_bw(name, array, size) auto UNIQUE_NAME(name) = (array) - 1; for(auto name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
 #endif
 
+#define tape_destroy(tape) ((tape) ? free(__tape_base(tape)) : 0)
+#define tape_push(tape_ptr, v) (__tape_may_grow((tape_ptr), 1), (*(tape_ptr))[__tape_base(*(tape_ptr))[1]++] = (v))
+#define tape_append tape_push
+#define tape_size(tape) ((tape) ? __tape_base(tape)[1] : 0)
+#define tape_reserve(tape_ptr, n) (__tape_may_grow((tape_ptr), (n)), __tape_base(*(tape_ptr))[1] += (n), &((*(tape_ptr))[__tape_base(*(tape_ptr))[1] - (n)]))
+#define tape_get_last(tape) ((tape)[__tape_base(tape)[1] - 1])
+#define tape_reset(tape) ((tape) ? (__tape_base(tape)[1] = 0) : 0)
+
+#define __tape_base(tape) ((uint32*)(tape) - 2)
+#define __tape_may_grow(tape_ptr, n) (((*tape_ptr == 0) || (__tape_base(*tape_ptr)[1] + n >= __tape_base(*tape_ptr)[0])) ? ((*(void**)tape_ptr) = __tape_grow((void*)(*tape_ptr), n, sizeof(**tape_ptr))) : 0)
+
+static void* __tape_grow(void* tape, uint32 inc, uint32 item_size) {
+	uint32* ptr;
+	uint32 new_capacity;
+	if(tape) {
+		uint32* tape_base = __tape_base(tape);
+		uint32 dbl_cur = 2*tape_base[0];
+		uint32 min_needed = tape_base[1] + inc;
+		new_capacity = dbl_cur > min_needed ? dbl_cur : min_needed;
+		ptr = (uint32*)realloc(tape_base, item_size*new_capacity + 2*sizeof(uint32));
+	} else {
+		new_capacity = inc;
+		ptr = (uint32*)malloc(item_size*new_capacity + 2*sizeof(uint32));
+		ptr[1] = 0;
+	}
+	if(ptr) {
+		ptr[0] = new_capacity;
+		return (void*)(ptr + 2);
+	} else {
+		return (void*)(2*sizeof(uint32)); // try to force a NULL pointer exception later
+	}
+}
+
 #endif

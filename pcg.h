@@ -109,6 +109,7 @@ typedef PCG_UINT64 PCGF;
 
 // If you *must* statically initialize it, use this.
 #define PCG_INITIALIZER {0x853c49e6748fea9bULL, 0xda3e39cb94b95bdbULL}
+#define PCGF_INITIALIZER 0xda3e39cb94b95bdbULL
 
 
 PCG__DECLR void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence);
@@ -157,50 +158,50 @@ PCG__DECLS float pcg_random_uniform_ex(PCG* rng) {
 
 
 
-PCG__DECLR PCG_UINT64 pcg_hash64(PCG_UINT64 n);
-PCG__DECLS PCG_UINT32 pcg_hash(PCG_UINT64 n) {
-	return (PCG_UINT32)pcg_hash64(n);
+PCG__DECLR PCG_UINT64 pcg_hash64(PCG_UINT64 state);
+PCG__DECLS PCG_UINT32 pcg_hash(PCG_UINT64 state) {
+	return (PCG_UINT32)pcg_hash64(state);
 }
 
-PCG__DECLS PCG_INT32 pcg_hash_in(PCG_UINT64 n, PCG_INT32 lower, PCG_INT32 upper) {
-	return pcg_random_inf(&n, lower, upper);
+PCG__DECLS PCG_INT32 pcg_hash_in(PCG_UINT64 state, PCG_INT32 lower, PCG_INT32 upper) {
+	return (pcg_hash(state)%(upper - lower + 1)) + lower;
 }
-PCG__DECLS float pcg_hash_uniform(PCG_UINT64 n) {
-	return ((float)pcg_hash(n))*(1/PCG_INTMAX);
+PCG__DECLS float pcg_hash_uniform(PCG_UINT64 state) {
+	return ((float)pcg_hash(state))*(1/PCG_INTMAX);
 }
-PCG__DECLS float pcg_hash_uniform_in(PCG_UINT64 n) {
-	return ((float)pcg_hash(n))/(PCG_INTMAX - 1);
+PCG__DECLS float pcg_hash_uniform_in(PCG_UINT64 state) {
+	return ((float)pcg_hash(state))/(PCG_INTMAX - 1);
 }
-PCG__DECLS float pcg_hash_uniform_ex(PCG_UINT64 n) {
-	return (((float)pcg_hash(n)) + 1)/(PCG_INTMAX + 1);
+PCG__DECLS float pcg_hash_uniform_ex(PCG_UINT64 state) {
+	return (((float)pcg_hash(state)) + 1)/(PCG_INTMAX + 1);
 }
 
 
 
-PCG__DECLS void pcg_seedf(PCGF* rng, PCG_INT32 seed) {
+PCG__DECLS void pcgf_seed(PCGF* rng, PCG_INT32 seed) {
 	*rng = seed;
 }
 
-PCG__DECLS PCG_UINT64 pcg_random64f(PCGF* rng) {
+PCG__DECLS PCG_UINT64 pcgf_random64(PCGF* rng) {
 	*rng = pcg_hash64(*rng);
 	return *rng;
 }
-PCG__DECLS PCG_UINT32 pcg_randomf(PCGF* rng) {
-	return (PCG_UINT32)pcg_random64f(rng);
+PCG__DECLS PCG_UINT32 pcgf_random(PCGF* rng) {
+	return (PCG_UINT32)pcgf_random64(rng);
 }
 
 
-PCG__DECLS PCG_INT32 pcg_random_inf(PCGF* rng, PCG_INT32 lower, PCG_INT32 upper) {
-	return (pcg_randomf(rng)%(upper - lower + 1)) + lower;
+PCG__DECLS PCG_INT32 pcgf_random_in(PCGF* rng, PCG_INT32 lower, PCG_INT32 upper) {
+	return (pcgf_random(rng)%(upper - lower + 1)) + lower;
 }
-PCG__DECLS float pcg_random_uniformf(PCGF* rng) {
-	return ((float)pcg_randomf(rng))*(1/PCG_INTMAX);
+PCG__DECLS float pcgf_random_uniform(PCGF* rng) {
+	return ((float)pcgf_random(rng))*(1/PCG_INTMAX);
 }
-PCG__DECLS float pcg_random_uniform_inf(PCGF* rng) {
-	return ((float)pcg_randomf(rng))/(PCG_INTMAX - 1);
+PCG__DECLS float pcgf_random_uniform_in(PCGF* rng) {
+	return ((float)pcgf_random(rng))/(PCG_INTMAX - 1);
 }
-PCG__DECLS float pcg_random_uniform_exf(PCGF* rng) {
-	return (((float)pcg_randomf(rng)) + 1)/(PCG_INTMAX + 1);
+PCG__DECLS float pcgf_random_uniform_ex(PCGF* rng) {
+	return (((float)pcgf_random(rng)) + 1)/(PCG_INTMAX + 1);
 }
 
 #endif
@@ -211,9 +212,9 @@ PCG__DECLS float pcg_random_uniform_exf(PCGF* rng) {
 PCG__DECLR PCG_UINT32 pcg_random(PCG* rng) {
     PCG_UINT64 oldstate = rng->state;
     rng->state = oldstate * 6364136223846793005ULL + rng->inc;
-    PCG_INT32 xorshifted = (PCG_INT32)(((oldstate >> 18u) ^ oldstate) >> 27u);
-    PCG_INT32 rot = (PCG_INT32)(oldstate >> 59u);
-    return (PCG_UINT32)((xorshifted >> rot) | (xorshifted << (((PCG_INT32)(-(PCG_INT32)rot)) & 31)));
+    PCG_UINT32 xorshifted = (((oldstate >> 18u) ^ oldstate) >> 27u);
+    PCG_UINT32 rot = (oldstate >> 59u);
+    return (xorshifted >> rot) | (xorshifted << (((PCG_UINT32)(-(PCG_INT32)rot)) & 31));
 }
 
 PCG__DECLR void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence) {
@@ -244,7 +245,7 @@ PCG__DECLR PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper) {
     // because this version will calculate the same modulus, but the LHS
     // value is less than 2^32.
 
-    PCG_INT32 threshold = ((PCG_INT32)(-bound)) % bound;
+    PCG_INT32 threshold = (-bound) % bound;
 
     // Uniformity guarantees that this loop will terminate.  In practice, it
     // should usually terminate quickly; on average (assuming all bounds are
@@ -260,12 +261,12 @@ PCG__DECLR PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper) {
     }
 }
 
-PCG__DECLR PCG_UINT32 pcg_hash64(PCG_UINT64 x) {
+PCG__DECLR PCG_UINT64 pcg_hash64(PCG_UINT64 state) {
 	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
-	x ^= x >> 12; // a
-	x ^= x << 25; // b
-	x ^= x >> 27; // c
-	return x*((PCG_UINT64)0x2545F4914F6CDD1D);
+	state ^= state >> 12; // a
+	state ^= state << 25; // b
+	state ^= state >> 27; // c
+	return state*0x2545F4914F6CDD1Dull;
 }
 
 #endif
