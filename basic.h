@@ -1,4 +1,9 @@
 //By Monica Moniot
+// This header contains a large set macros I find essential for
+// programming in C. Just #include this header file to use it.
+// ASSERT is enabled by default, #define BASIC_NO_ASSERT
+// if you would like to disable assertions.
+
 #ifndef BASIC__H_INCLUDE
 #define BASIC__H_INCLUDE
 
@@ -36,10 +41,21 @@ typedef uint64_t uint64;
 #define NULLOP() 0
 
 #define cast(type, value) ((type)(value))
-#define from_cstr(str) str, strlen(str)
 #define ptr_add(type, ptr, n) ((type*)((byte*)(ptr) + (n)))
 #define ptr_dist(ptr0, ptr1) ((int64)((byte*)(ptr1) - (byte*)(ptr0)))
-#define memzero(ptr, size) memset(ptr, 0, size)
+#define memzro(ptr, size) memset(ptr, 0, size)
+#define memzero(ptr, size) memset(ptr, 0, sizeof(*ptr)*(size))
+#define memcopy(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
+#define from_cstr(str) str, strlen(str)
+
+#define talloc(type, size) ((type*)malloc(sizeof(type)*(size)))
+#ifdef _MSC_VER
+ #include <malloc.h>
+ #define talloca(type, value) ((type*)_alloca(sizeof(type)*(size)))
+#else
+ #include <alloca.h>
+ #define talloca(type, value) ((type*)alloca(sizeof(type)*(size)))
+#endif
 
 #define MACRO_CAT_(a, b) a ## b
 #define MACRO_CAT(a, b) MACRO_CAT_(a, b)
@@ -57,22 +73,24 @@ typedef uint64_t uint64;
  #define for_each_in_bw(name, array, size) auto UNIQUE_NAME(name) = (array) - 1; for(auto name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
 #endif
 
-#define tape_destroy(tape) ((tape) ? free(__tape_base(tape)) : 0)
-#define tape_push(tape_ptr, v) (__tape_may_grow((tape_ptr), 1), (*(tape_ptr))[__tape_base(*(tape_ptr))[1]++] = (v))
+#define tape_destroy(tape_ptr) (*(tape_ptr) ? free(__tape_base(tape_ptr)) : 0)
+#define tape_push(tape_ptr, v) (__tape_may_grow((tape_ptr), 1), (*(tape_ptr))[__tape_base(tape_ptr)[1]++] = (v))
 #define tape_append tape_push
-#define tape_size(tape) ((tape) ? __tape_base(tape)[1] : 0)
-#define tape_reserve(tape_ptr, n) (__tape_may_grow((tape_ptr), (n)), __tape_base(*(tape_ptr))[1] += (n), &((*(tape_ptr))[__tape_base(*(tape_ptr))[1] - (n)]))
-#define tape_get_last(tape) ((tape)[__tape_base(tape)[1] - 1])
-#define tape_reset(tape) ((tape) ? (__tape_base(tape)[1] = 0) : 0)
+#define tape_pop(tape_ptr) ((*(tape_ptr))[--__tape_base(tape_ptr)[1]])
+#define tape_size(tape_ptr) (*(tape_ptr) ? __tape_base(tape_ptr)[1] : 0)
+#define tape_reserve(tape_ptr, n) (__tape_may_grow((tape_ptr), (n)), __tape_base(tape_ptr)[1] += (n), &((*(tape_ptr))[__tape_base(tape_ptr)[1] - (n)]))
+#define tape_release(tape_ptr, n) (__tape_base(tape_ptr)[1] -= n)
+#define tape_get_last(tape_ptr) ((*(tape_ptr))[__tape_base(tape_ptr)[1] - 1])
+#define tape_reset(tape_ptr) (*(tape_ptr) ? (__tape_base(tape_ptr)[1] = 0) : 0)
 
-#define __tape_base(tape) ((uint32*)(tape) - 2)
-#define __tape_may_grow(tape_ptr, n) (((*tape_ptr == 0) || (__tape_base(*tape_ptr)[1] + n >= __tape_base(*tape_ptr)[0])) ? ((*(void**)tape_ptr) = __tape_grow((void*)(*tape_ptr), n, sizeof(**tape_ptr))) : 0)
+#define __tape_base(tape_ptr) ((uint32*)(*(tape_ptr)) - 2)
+#define __tape_may_grow(tape_ptr, n) ((*(tape_ptr) == 0 || (__tape_base(tape_ptr)[1] + n >= __tape_base(tape_ptr)[0])) ? ((*(void**)(tape_ptr)) = __tape_grow((void*)*(tape_ptr), n, sizeof(**(tape_ptr)))) : 0)
 
 static void* __tape_grow(void* tape, uint32 inc, uint32 item_size) {
 	uint32* ptr;
 	uint32 new_capacity;
 	if(tape) {
-		uint32* tape_base = __tape_base(tape);
+		uint32* tape_base = __tape_base(&tape);
 		uint32 dbl_cur = 2*tape_base[0];
 		uint32 min_needed = tape_base[1] + inc;
 		new_capacity = dbl_cur > min_needed ? dbl_cur : min_needed;

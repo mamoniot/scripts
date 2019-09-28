@@ -1,16 +1,15 @@
 //By Monica Moniot
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#ifndef MAM_ALLOC__INCLUDE
-#define MAM_ALLOC__INCLUDE
-////////////////////////////////////////////////////////////////////////////////////////////////////
-// An indev custom allocators library
+//////////////////////////////////////////////////////////////////////
+// This is a custom allocators single header library
+// Just #include this header file and #define MAM_ALLOC_IMPLEMENTATION
+// once to use it.
+// This library provides memory integrity checks by default with every
+// allocator that will trigger assertions in cases of error.
+// A comprehensive list of this library's functions is below.
 // TODO: Build a fuzzer for the heap
 // TODO: Full documentation
 //
-// options:
+// macro options:
 // MAM_ALLOC_STATIC
 // MAM_ALLOC_DEBUG
 // MAM_ALLOC_ASSERT
@@ -86,6 +85,12 @@ extern "C" {
 // mam_check_mark
 // mam_check_unmark
 //
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef MAM_ALLOC__INCLUDE
+#define MAM_ALLOC__INCLUDE
 
 
 #ifndef MAM_ALLOC_ASSERT
