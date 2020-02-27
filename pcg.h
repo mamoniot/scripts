@@ -159,7 +159,7 @@ PCG__DECLS void pcg_seed(PCG* rng, PCG_UINT64 seed) {
     pcg_seeds(rng, seed, seed);
 }
 
-PCG__DECLR PCG_UINT64 pcg_random64(PCG* rng) {
+PCG__DECLS PCG_UINT64 pcg_random64(PCG* rng) {
 	return (((PCG_UINT64)pcg_random(rng))<<32)|((PCG_UINT64)pcg_random(rng));
 }
 
