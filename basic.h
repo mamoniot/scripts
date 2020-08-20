@@ -1,8 +1,6 @@
 //By Monica Moniot
 // This header contains a large set macros I find essential for
 // programming in C. Just #include this header file to use it.
-// ASSERT is enabled by default, #define BASIC_NO_ASSERT
-// if you would like to disable assertions.
 
 #ifndef BASIC__H_INCLUDE
 #define BASIC__H_INCLUDE
@@ -23,16 +21,43 @@ typedef uint32_t uint32;
 typedef  int64_t  int64;
 typedef uint64_t uint64;
 
+#if defined(_WIN64) || defined(__x86_64__) || defined(__ia64__) || defined(__LP64__)
+  #define PTR64
+#endif
+#ifdef PTR64
+typedef char mam__testsize2_ptr[sizeof(char *) == 8];
+typedef uint64 uinta;
+typedef int64  inta;
+#else
+typedef char mam__testsize2_ptr[sizeof(char *) == 4];
+typedef uint32 uinta;
+typedef int32  inta;
+#endif
+
 #define KILOBYTE (((int64)1)<<10)
 #define MEGABYTE (((int64)1)<<20)
 #define GIGABYTE (((int64)1)<<30)
 #define TERABYTE (((int64)1)<<40)
 
+
+#define M_PI  3.14159265358979323846f
+
+#define degtorad(a)  ((a)*(M_PI/180))
+#define radtodeg(a)  ((a)*(180/M_PI))
+#define tobyte32(b0, b1, b2, b3) (((b3)<<24) + (b2)*65536 + (b1)*256 + (b0))
+#define tobyte16(b0, b1) ((b1)*256 + (b0))
+#define getbyte(bs, i) ((bs>>((i)*8)) & 255)
+#define getbyte0(bs) (bs & 255)
+#define getbyte1(bs) ((bs)/256 & 255)
+#define getbyte2(bs) ((bs)/65536 & 255)
+#define getbyte3(bs) (((bs)>>24) & 255)
+
+
 #ifndef ASSERT
- #ifndef BASIC_NO_ASSERT
+ #if defined(MAM_DEBUG)
   #include <assert.h>
   #define ASSERT(is) assert(is)
-  #define ASSERTL(is, err) assert(is && err)
+  #define ASSERTL(is, err) assert((is) && err)
  #else
   #define ASSERT(is) 0
   #define ASSERTL(is, err) 0
@@ -48,14 +73,14 @@ typedef uint64_t uint64;
 #define memcopy(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
 #define from_cstr(str) str, strlen(str)
 
-#define talloc(type, size) ((type*)malloc(sizeof(type)*(size)))
+#define malloct(type, size) ((type*)malloc(sizeof(type)*(size)))
 #ifdef _MSC_VER
  #include <malloc.h>
- #define talloca(type, value) ((type*)_alloca(sizeof(type)*(size)))
+ #define alloca(size) _alloca(size)
 #else
  #include <alloca.h>
- #define talloca(type, value) ((type*)alloca(sizeof(type)*(size)))
 #endif
+#define allocat(type, size) ((type*)alloca(sizeof(type)*(size)))
 
 #define MACRO_CAT_(a, b) a ## b
 #define MACRO_CAT(a, b) MACRO_CAT_(a, b)
@@ -68,7 +93,7 @@ typedef uint64_t uint64;
 #define for_ever(name) for(int32 name = 0;; name += 1)
 
 #ifdef __cplusplus
- #define memswap(v0, v1) auto UNIQUE_NAME(__t) = *(v0); *(v0) = *(v1); *(v1) = UNIQUE_NAME(__t)
+ #define memswap(v0, v1) do {auto mam__t = *(v0); *(v0) = *(v1); *(v1) = mam__t} while(0);
 
  #define for_each_in(name, array, size) auto UNIQUE_NAME(name) = (array) + (size); for(auto name = (array); name != UNIQUE_NAME(name); name += 1)
  #define for_each_in_bw(name, array, size) auto UNIQUE_NAME(name) = (array) - 1; for(auto name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
@@ -90,7 +115,7 @@ typedef uint64_t uint64;
 #define __tape_base(tape_ptr) ((uint32*)(*(tape_ptr)) - 2)
 #define __tape_may_grow(tape_ptr, n) ((*(tape_ptr) == 0 || (__tape_base(tape_ptr)[1] + n >= __tape_base(tape_ptr)[0])) ? ((*(void**)(tape_ptr)) = __tape_grow((void*)*(tape_ptr), n, sizeof(**(tape_ptr)))) : 0)
 
-static void* __tape_grow(void* tape, uint32 inc, uint32 item_size) {
+extern "C" static void* __tape_grow(void* tape, uint32 inc, uint32 item_size) {
 	uint32* ptr;
 	uint32 new_capacity;
 	if(tape) {

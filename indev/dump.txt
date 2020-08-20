@@ -1,0 +1,152 @@
+
+#define mam_tape_get_buffer(type, tape) (MAM_ALLOC_ASSERT(sizeof(type) == (tape)->item_size, "mam_alloc: attempt to get a tape buffer of the wrong type size"), mam_ptr_add(type, tape, sizeof(MamTape)))
+#define mam_tape_from_buffer(buffer) mam_ptr_add(MamTape, buffer, -(mam_int)sizeof(MamTape))
+
+MAM_ALLOC__DECLS MamTape* mam_tape_initn(void* alloc_ptr, mam_int alloc_size, mam_int item_size) {
+	MamTape* tape = (MamTape*)alloc_ptr;
+	tape->mem_size = sizeof(MamTape);
+	tape->mem_capacity = alloc_size;
+	tape->item_size = item_size;
+	return tape;
+}
+#define mam_tape_init(type, ptr, size) mam_tape_initn(ptr, size, sizeof(type))
+#define mam_tape_initb(type, ptr, size) mam_tape_get_buffer(type, mam_tape_initn(ptr, size, sizeof(type)))
+
+MAM_ALLOC__DECLS void mam_tape_reset(MamTape* tape) {
+	tape->mem_size = sizeof(MamTape);
+}
+MAM_ALLOC__DECLS void mam_tape_resetb(void* buffer) {
+	MamTape* tape = mam_tape_from_buffer(buffer);
+	tape->mem_size = sizeof(MamTape);
+}
+
+#define mam_tape_will_overflow(tape, item_n) ((tape)->mem_size + (tape)->item_size*(item_n) > (tape)->mem_capacity)
+
+MAM_ALLOC__DECLS mam_int mam_tape_reservei(MamTape* tape, mam_int item_n) {
+	MAM_ALLOC_ASSERT(!mam_tape_will_overflow(tape, item_n), "mam_alloc: failed to reallocate memory for tape");
+
+	mam_int size = item_n*tape->item_size;
+	mam_int item = tape->mem_size;
+	tape->mem_size += size;
+	return item;
+}
+MAM_ALLOC__DECLS void* mam_tape_reserven(MamTape* tape, mam_int item_n) {
+	return mam_ptr_add(void, tape, mam_tape_reservei(tape, item_n));
+}
+#define mam_tape_reserve(type, tape, item_n) ((type*)mam_tape_reserven(tape, item_n))
+MAM_ALLOC__DECLS mam_int mam_tape_reserveib(void* buffer, mam_int item_n) {
+	MamTape* tape = mam_tape_from_buffer(buffer);
+	return (mam_tape_reservei(tape, item_n) - (mam_int)sizeof(MamTape))/tape->item_size;
+}
+#define mam_tape_reserveb(buffer, item_n) (&(buffer)[mam_tape_reserveib(buffer, item_n)])
+
+MAM_ALLOC__DECLS void mam_tape_append(MamTape* tape, void* item) {
+	MAM_ALLOC_ASSERT(!mam_tape_will_overflow(tape, 1), "mam_alloc: failed to reallocate memory for tape");
+	mam_int size = tape->item_size;
+	void* ret = ((void*)tape->mem[tape->mem_size]);
+	tape->mem_size += size;
+	MAM_ALLOC_MEMCPY(ret, item, size);//TODO: remove
+}
+#define mam_tape_appendb(buffer, item) ((buffer)[mam_tape_reserveib(buffer, 1)] = (item))
+
+MAM_ALLOC__DECLS mam_int mam_tape_size(MamTape* tape) {
+	return (tape->mem_size - (mam_int)sizeof(MamTape))/tape->item_size;
+}
+#define mam_tape_sizeb(buffer) (mam_tape_from_buffer(buffer)->mem_size - (mam_int)sizeof(MamTape))/((mam_int)sizeof(*(buffer)))
+
+
+MAM_ALLOC__DECLS void mmam_tape_grow(MamTape** tape_ptr, mam_int item_n) {
+	MamTape* tape = *tape_ptr;
+	if(mam_tape_will_overflow(tape, item_n)) {
+		tape->mem_capacity *= 2;
+		*tape_ptr = (MamTape*)MAM_ALLOC_REALLOC(tape, tape->mem_capacity);
+	}
+}
+MAM_ALLOC__DECLS void mmam_tape_growb(void** buffer_ptr, mam_int item_n) {
+	MamTape* tape = mam_tape_from_buffer(*buffer_ptr);
+	mmam_tape_grow(&tape, item_n);
+	*buffer_ptr = mam_ptr_add(void, tape, sizeof(MamTape));
+}
+
+#define mmam_tape_new(type) mam_tape_init(type, MAM_ALLOC_MALLOC(32), 32);
+#define mmam_tape_newb(type) mam_tape_initb(type, MAM_ALLOC_MALLOC(32), 32);
+
+MAM_ALLOC__DECLS MamTape* mmam_tape_newn(mam_int init_size, mam_int item_size) {
+	return mam_tape_initn(MAM_ALLOC_MALLOC(item_size*init_size), item_size*init_size, item_size);
+}
+
+MAM_ALLOC__DECLS mam_int mmam_tape_reservei(MamTape** tape_ptr, mam_int item_n) {
+	mmam_tape_grow(tape_ptr, item_n);
+	return mam_tape_reservei(*tape_ptr, item_n);
+}
+MAM_ALLOC__DECLS void* mmam_tape_reserven(MamTape** tape_ptr, mam_int item_n) {
+	mmam_tape_grow(tape_ptr, item_n);
+	return mam_tape_reserven(*tape_ptr, item_n);
+}
+#define mmam_tape_reserve(type, tape_ptr, item_n) ((type*)mmam_tape_reserven(tape_ptr, item_n))
+MAM_ALLOC__DECLS mam_int mmam_tape_reserveib(void** buffer_ptr, mam_int item_n) {
+	mmam_tape_growb(buffer_ptr, item_n);
+	return mam_tape_reserveib(*buffer_ptr, item_n);
+}
+#define mmam_tape_reserveb(buffer_ptr, item_n) (mmam_tape_growb((void**)(buffer_ptr), item_n), mam_tape_reserveb(*(buffer_ptr), item_n))
+
+MAM_ALLOC__DECLS void mmam_tape_append(MamTape** tape_ptr, void* item) {
+	mmam_tape_grow(tape_ptr, 1);
+	mam_tape_append(*tape_ptr, item);
+}
+#define mmam_tape_appendb(buffer_ptr, item) (mmam_tape_growb((void**)(buffer_ptr), 1), mam_tape_appendb(*(buffer_ptr), item))
+
+
+
+
+MAM_ALLOC__DECLS void mmam_stack_grow(MamStack** stack_ptr, mam_int size) {
+	MamStack* stack = *stack_ptr;
+	if(mam_stack_will_overflow(stack, size)) {
+		stack->mem_capacity *= 2;
+		*stack_ptr = (MamStack*)MAM_ALLOC_REALLOC(stack, stack->mem_capacity);
+	}
+}
+MAM_ALLOC__DECLS MamStack* mmam_stack_newn(mam_int init_size) {
+	return mam_stack_init(MAM_ALLOC_MALLOC(init_size), init_size);
+}
+MAM_ALLOC__DECLS MamStack* mmam_stack_new(void) {
+	return mmam_stack_newn(32);
+}
+
+MAM_ALLOC__DECLS mam_int mmam_stack_pushi(MamStack** stack_ptr, mam_int size) {
+	mmam_stack_grow(stack_ptr, size);
+	return mam_stack_pushi(*stack_ptr, size);
+}
+MAM_ALLOC__DECLS void* mmam_stack_pushn(MamStack** stack_ptr, mam_int size) {
+	mmam_stack_grow(stack_ptr, size);
+	return mam_stack_pushn(*stack_ptr, size);
+}
+#define mmam_stack_push(type, stack_ptr, size) ((type*)mmam_stack_pushn(*(stack_ptr), sizeof(type)*(size)))
+
+MAM_ALLOC__DECLS void mmam_stack_extend(MamStack** stack_ptr, mam_int size) {
+	mmam_stack_grow(stack_ptr, size);
+	mam_stack_extend(*stack_ptr, size);
+}
+
+
+/*
+MAM_ALLOC__DECLS mam_int mam_heap_lasti(MamHeap* heap) {
+	if(heap->end_block) {
+		return mam_check_get_external_item(heap->end_block + sizeof(Mam__Block));
+	} else {
+		return 0;
+	}
+}
+
+MAM_ALLOC__DECLS mam_int mam_heap_prei(MamHeap* heap, mam_int item) {
+	item = mam_check_get_internal_item(item);
+	mam_int cur_i = item - sizeof(Mam__Block);
+	Mam__Block* cur_block = mam_ptr_add(Mam__Block, heap, cur_i);
+	mam_int pre_i = cur_block->pre;
+	if(pre_i < cur_i) {
+		return mam_check_get_external_item(pre_i + sizeof(Mam__Block));
+	} else {
+		return 0;
+	}
+}
+*/
