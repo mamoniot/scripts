@@ -34,13 +34,20 @@ typedef uint32 uinta;
 typedef int32  inta;
 #endif
 
-#define KILOBYTE (((int64)1)<<10)
-#define MEGABYTE (((int64)1)<<20)
-#define GIGABYTE (((int64)1)<<30)
+
+#define KILOBYTE (((inta)1)<<10)
+#define MEGABYTE (((inta)1)<<20)
+#define GIGABYTE (((inta)1)<<30)
 #define TERABYTE (((int64)1)<<40)
 
-
-#define M_PI  3.14159265358979323846f
+#define M_PI 3.14159265358979323846f
+#define M_EPS (1/1024)
+#define MAX_UINT32 0xffffffffu
+#define MAX_UINT64 0xffffffffffffffffull
+#define MIN_INT32 0x80000000
+#define MAX_INT32 0x7fffffff
+#define MIN_INT64 0x8000000000000000ll
+#define MAX_INT64 0x7fffffffffffffffll
 
 #define degtorad(a)  ((a)*(M_PI/180))
 #define radtodeg(a)  ((a)*(180/M_PI))
@@ -52,33 +59,27 @@ typedef int32  inta;
 #define getbyte2(bs) ((bs)/65536 & 255)
 #define getbyte3(bs) (((bs)>>24) & 255)
 
-
-#ifndef ASSERT
- #if defined(MAM_DEBUG)
-  #include <assert.h>
-  #define ASSERT(is) assert(is)
-  #define ASSERTL(is, err) assert((is) && err)
- #else
-  #define ASSERT(is) 0
-  #define ASSERTL(is, err) 0
- #endif
-#endif
-#define NULLOP() 0
-
 #define cast(type, value) ((type)(value))
 #define ptr_add(type, ptr, n) ((type*)((byte*)(ptr) + (n)))
-#define ptr_dist(ptr0, ptr1) ((int64)((byte*)(ptr1) - (byte*)(ptr0)))
+#define ptr_sub(ptr0, ptr1) ((inta)((byte*)(ptr0) - (byte*)(ptr1)))
+#define ptr_dist(ptr0, ptr1) ((inta)abs((byte*)(ptr0) - (byte*)(ptr1)))
 #define memzro(ptr, size) memset(ptr, 0, size)
 #define memzero(ptr, size) memset(ptr, 0, sizeof(*ptr)*(size))
 #define memcopy(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
 #define from_cstr(str) str, strlen(str)
-
+#define swap(type, v0, v1) do {type mam__t = *(v0); *(v0) = *(v1); *(v1) = mam__t} while(0);
 #define malloct(type, size) ((type*)malloc(sizeof(type)*(size)))
-#ifdef _MSC_VER
- #include <malloc.h>
- #define alloca(size) _alloca(size)
-#else
- #include <alloca.h>
+#define realloct(type, ptr, size) ((type*)realloc(ptr, sizeof(type)*(size)))
+
+#ifndef alloca
+	#ifdef _MSC_VER
+		#include <malloc.h>
+		#ifndef alloca
+			#define alloca(size) _alloca(size)
+		#endif
+	#else
+		#include <alloca.h>
+	#endif
 #endif
 #define allocat(type, size) ((type*)alloca(sizeof(type)*(size)))
 
@@ -86,55 +87,59 @@ typedef int32  inta;
 #define MACRO_CAT(a, b) MACRO_CAT_(a, b)
 #define UNIQUE_NAME(prefix) MACRO_CAT(prefix, __LINE__)
 
+#ifndef MAM_NO_FOR
 #define for_each_lt(name, size) int32 UNIQUE_NAME(name) = (size); for(int32 name = 0; name < UNIQUE_NAME(name); name += 1)
 #define for_each_lt_bw(name, size) for(int32 name = (size) - 1; name >= 0; name -= 1)
 #define for_each_in_range(name, r0, r1) int32 UNIQUE_NAME(name) = (r1); for(int32 name = (r0); name <= UNIQUE_NAME(name); name += 1)
 #define for_each_in_range_bw(name, r0, r1) int32 UNIQUE_NAME(name) = (r0); for(int32 name = (r1); name >= UNIQUE_NAME(name); name -= 1)
-#define for_ever(name) for(int32 name = 0;; name += 1)
 
-#ifdef __cplusplus
- #define memswap(v0, v1) do {auto mam__t = *(v0); *(v0) = *(v1); *(v1) = mam__t} while(0);
+#define for_each_in(type, name, array, size) type UNIQUE_NAME(name) = (array) + (size); for(type name = (array); name != UNIQUE_NAME(name); name += 1)
+#define for_each_in_bw(type, name, array, size) type UNIQUE_NAME(name) = (array) - 1; for(type name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
 
- #define for_each_in(name, array, size) auto UNIQUE_NAME(name) = (array) + (size); for(auto name = (array); name != UNIQUE_NAME(name); name += 1)
- #define for_each_in_bw(name, array, size) auto UNIQUE_NAME(name) = (array) - 1; for(auto name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
-
- #define for_each_index(name, name_p, array, size) int32 UNIQUE_NAME(name) = (size); auto name_p = (array); for(int32 name = 0; name < UNIQUE_NAME(name); (name += 1, name_p += 1))
- #define for_each_index_bw(name, name_p, array, size) int32 UNIQUE_NAME(name) = (size); auto name_p = (array) + UNIQUE_NAME(name) - 1; for(int32 name = UNIQUE_NAME(name) - 1; name >= 0; (name -= 1, name_p -= 1))
+#define for_each_index(type, name, name_ptr, array, size) int32 UNIQUE_NAME(name) = (size); type name_ptr = (array); for(int32 name = 0; name < UNIQUE_NAME(name); (name += 1, name_ptr += 1))
+#define for_each_index_bw(type, name, name_ptr, array, size) int32 UNIQUE_NAME(name) = (size); type name_ptr = (array) + UNIQUE_NAME(name) - 1; for(int32 name = UNIQUE_NAME(name) - 1; name >= 0; (name -= 1, name_ptr -= 1))
 #endif
 
-#define tape_destroy(tape_ptr) (*(tape_ptr) ? (free(__tape_base(tape_ptr)), 0) : 0)
-#define tape_push(tape_ptr, v) (__tape_may_grow((tape_ptr), 1), (*(tape_ptr))[__tape_base(tape_ptr)[1]++] = (v))
-#define tape_append tape_push
-#define tape_pop(tape_ptr) ((*(tape_ptr))[--__tape_base(tape_ptr)[1]])
-#define tape_size(tape_ptr) (*(tape_ptr) ? __tape_base(tape_ptr)[1] : 0)
-#define tape_reserve(tape_ptr, n) (__tape_may_grow((tape_ptr), (n)), __tape_base(tape_ptr)[1] += (n), &((*(tape_ptr))[__tape_base(tape_ptr)[1] - (n)]))
-#define tape_release(tape_ptr, n) (__tape_base(tape_ptr)[1] -= n)
-#define tape_get_last(tape_ptr) ((*(tape_ptr))[__tape_base(tape_ptr)[1] - 1])
-#define tape_reset(tape_ptr) (*(tape_ptr) ? (__tape_base(tape_ptr)[1] = 0) : 0)
-
-#define __tape_base(tape_ptr) ((uint32*)(*(tape_ptr)) - 2)
-#define __tape_may_grow(tape_ptr, n) ((*(tape_ptr) == 0 || (__tape_base(tape_ptr)[1] + n >= __tape_base(tape_ptr)[0])) ? ((*(void**)(tape_ptr)) = __tape_grow((void*)*(tape_ptr), n, sizeof(**(tape_ptr)))) : 0)
-
-extern "C" static void* __tape_grow(void* tape, uint32 inc, uint32 item_size) {
-	uint32* ptr;
-	uint32 new_capacity;
-	if(tape) {
-		uint32* tape_base = __tape_base(&tape);
-		uint32 dbl_cur = 2*tape_base[0];
-		uint32 min_needed = tape_base[1] + inc;
-		new_capacity = dbl_cur > min_needed ? dbl_cur : min_needed;
-		ptr = (uint32*)realloc(tape_base, item_size*new_capacity + 2*sizeof(uint32));
-	} else {
-		new_capacity = inc;
-		ptr = (uint32*)malloc(item_size*new_capacity + 2*sizeof(uint32));
-		ptr[1] = 0;
-	}
-	if(ptr) {
-		ptr[0] = new_capacity;
-		return (void*)(ptr + 2);
-	} else {
-		return (void*)(2*sizeof(uint32)); // try to force a NULL pointer exception later
-	}
-}
-
 #endif
+
+/*
+------------------------------------------------------------------------------
+This software is available under 2 licenses -- choose whichever you prefer.
+------------------------------------------------------------------------------
+ALTERNATIVE A - MIT License
+Copyright (c) 2020 Monica Moniot
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+------------------------------------------------------------------------------
+ALTERNATIVE B - Public Domain (www.unlicense.org)
+This is free and unencumbered software released into the public domain.
+Anyone is free to copy, modify, publish, use, compile, sell, or distribute this
+software, either in source code form or as a compiled binary, for any purpose,
+commercial or non-commercial, and by any means.
+In jurisdictions that recognize copyright laws, the author or authors of this
+software dedicate any and all copyright interest in the software to the public
+domain. We make this dedication for the benefit of the public at large and to
+the detriment of our heirs and successors. We intend this dedication to be an
+overt act of relinquishment in perpetuity of all present and future rights to
+this software under copyright law.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+------------------------------------------------------------------------------
+*/
