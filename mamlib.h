@@ -172,14 +172,14 @@ MAMLIB__DECLS int mam_strtonum64(MamString str, int64_t* ret_n) {
 	if(str.ptr[0] == '0' && str.ptr[1] == 'x') {
 		return mam_strtohex64(mam_substr(str, 2, -1), (uint64_t*)ret_n);
 	} else {
-		return mam_strtoint64(mam_substr(str, 2, -1), ret_n);
+		return mam_strtoint64(str, ret_n);
 	}
 }
 MAMLIB__DECLS int mam_strtonum32(MamString str, int32_t* ret_n) {
 	if(str.ptr[0] == '0' && str.ptr[1] == 'x') {
 		return mam_strtohex32(mam_substr(str, 2, -1), (uint32_t*)ret_n);
 	} else {
-		return mam_strtoint32(mam_substr(str, 2, -1), ret_n);
+		return mam_strtoint32(str, ret_n);
 	}
 }
 
@@ -423,8 +423,8 @@ MAMLIB__DECLS void* mam_check_on_alloc(void* mem, mam_int buffer_size) {
 }
 
 /*******************************************************************************
-                         ATTENTION: DEBUGGER NOTICE
-********************************************************************************
+/                         ATTENTION: DEBUGGER NOTICE
+/*******************************************************************************
 If your debugger takes you here because of an assertion, look at the assertion
 message for more information, and walk the stack back up to your own code.
 This library provides the following memory check functions to do quick and
@@ -457,7 +457,6 @@ MAMLIB__DECLS void* mam_check_on_free(void* buffer) {
 
 
 
-
 #ifdef MAMLIB_IMPLEMENTATION
 void* mam_check_allocation(MamAllocatorFunc* allocator, void* allocator_data, MamAllocMode mode, mam_int alloc_size, void* old_ptr) {
 	if(mode == MAM_MODE_ALLOC) {
@@ -465,8 +464,9 @@ void* mam_check_allocation(MamAllocatorFunc* allocator, void* allocator_data, Ma
 			return mam_check_on_alloc(allocator(mode, alloc_size + MAM_CHECK_FULL_SIZE, old_ptr, allocator_data), alloc_size);
 		}
 	} else if(mode == MAM_MODE_REALLOC) {
-		mam_check_unmark(old_ptr);
-		return mam_check_on_alloc(allocator(mode, alloc_size + MAM_CHECK_FULL_SIZE, old_ptr, allocator_data), alloc_size);
+		if(alloc_size) {
+			return mam_check_on_alloc(allocator(mode, alloc_size + MAM_CHECK_FULL_SIZE, mam_check_on_free(old_ptr), allocator_data), alloc_size);
+		}
 	} else if(mode == MAM_MODE_FREE) {
 		return allocator(mode, alloc_size, mam_check_on_free(old_ptr), allocator_data);
 	}

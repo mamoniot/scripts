@@ -30,7 +30,7 @@
  // ~~~LIBRARY CONTENTS~~~
  // Macro Options:
  //     PCG_STATIC - #define this to force the library to compile staticly
- //     PCG_NO_STDINT - #define this to disable the use of stdint.h
+ //     PCG_NO_STDINT - #define this to disable the use of stdint.h, must define the following:
  //     PCG_INT32 - #define this to replace the default 32-bit integer type
  //     PCG_UINT32 - #define this to replace the 32-bit unsigned int integer type
  //     PCG_UINT64 - #define this to replace the 64-bit unsigned int integer type
@@ -40,16 +40,13 @@
  //
  // pcg_seeds(rng, initstate, initseq):
  //     Seed the rng, either seeds or seed must be called to initialize a rng
- //     Specified in two parts, state initializer and a
- //     sequence selection constant (a.k.a. stream id)
- //     The stream id is constant while the state initializer is variable
+ //     Specified in two parts, state initializer and a sequence selection
+ //     constant/stream id (determines the sequence of random numbers produced)
+ //     The stream id is kept constant while the state initializer is variable
  // pcg_seed(rng, seed):
- //     Sets both the state initializer and stream id
- //     to the given seed
+ //     Sets both the state initializer and stream id to the given seed
  //
  // pcg_random(rng):
- //     Generate a uniformly distributed 32-bit random integer
- // pcg_random64(rng):
  //     Generate a uniformly distributed 32-bit random integer
  //
  // pcg_advance(rng, delta):
@@ -67,16 +64,16 @@
  //     Generate a uniformly distributed float, r, where 0 < r < 1
  //
  // PCGF:
- //     A PCG_UINT64 that contains the entire state of a fast pcg rng.
+ //     A PCG_UINT64 that contains the entire state of a xorshift* rng.
  //     Works identically to a normal pcg rng, except it is smaller and
- //     faster, but produces lower quality numbers.
- //     To get the PCGF varient of any particular function, prefix it with "pcgf"
+ //     faster, producing only slightly lower quality randomness.
+ //     To get the PCGF variant of any particular function, prefix it with "pcgf"
  //     (there does not exist a pcgf_seeds or pcgf_advance function)
  //
  // pcgf_hash:
- //     A stateless version of a PCGF designed specifically for hashing 64-bit integers
- //     These functions take 64-bit integers as input instead of a PCGF*
- //     To get the pcgf_hash varient of any particular function, prefix it with "pcgf_hash"
+ //     A stateless version of the PCGF family designed specifically for hashing
+ //     64-bit integers. These functions take 64-bit integers as input instead of a PCGF*
+ //     To get the pcgf_hash variant of any particular function, prefix it with "pcgf_hash"
  //
  // *** THIS LIBRARY IS NOT CRYPTOGRAPHICALLY SECURE ***
 
@@ -159,9 +156,6 @@ PCG__DECLS void pcg_seed(PCG* rng, PCG_UINT64 seed) {
     pcg_seeds(rng, seed, seed);
 }
 
-PCG__DECLS PCG_UINT64 pcg_random64(PCG* rng) {
-	return (((PCG_UINT64)pcg_random(rng))<<32)|((PCG_UINT64)pcg_random(rng));
-}
 
 #define PCG_INTMAX ((float)(1ll<<32))
 PCG__DECLS float pcg_random_uniform(PCG* rng) {
@@ -176,9 +170,9 @@ PCG__DECLS float pcg_random_uniform_ex(PCG* rng) {
 
 
 
-PCG__DECLR PCG_UINT64 pcgf_hash64(PCG_UINT64 state);
+PCG__DECLR PCG_UINT64 pcgf__hash64(PCG_UINT64 state);
 PCG__DECLS PCG_UINT32 pcgf_hash(PCG_UINT64 state) {
-	return (PCG_UINT32)pcgf_hash64(state);
+	return (PCG_UINT32)pcgf__hash64(state);
 }
 
 PCG__DECLS PCG_INT32 pcgf_hash_in(PCG_UINT64 state, PCG_INT32 lower, PCG_INT32 upper) {
@@ -196,16 +190,12 @@ PCG__DECLS float pcgf_hash_uniform_ex(PCG_UINT64 state) {
 
 
 
-PCG__DECLS void pcgf_seed(PCGF* rng, PCG_INT32 seed) {
-	*rng = seed;
-}
-
-PCG__DECLS PCG_UINT64 pcgf_random64(PCGF* rng) {
-	*rng = pcgf_hash64(*rng);
-	return *rng;
+PCG__DECLS void pcgf_seed(PCGF* rng, PCG_UINT64 seed) {
+	*rng = (seed ? seed : PCGF_INITIALIZER);
 }
 PCG__DECLS PCG_UINT32 pcgf_random(PCGF* rng) {
-	return (PCG_UINT32)pcgf_random64(rng);
+	*rng = pcgf__hash64(*rng);
+	return (PCG_UINT32)(*rng >> 32);
 }
 
 
@@ -227,7 +217,7 @@ PCG__DECLS float pcgf_random_uniform_ex(PCGF* rng) {
 #ifdef PCG_IMPLEMENTATION
 #undef PCG_IMPLEMENTATION
 
-PCG__DECLR PCG_UINT32 pcg_random(PCG* rng) {
+PCG_UINT32 pcg_random(PCG* rng) {
     PCG_UINT64 oldstate = rng->state;
     rng->state = oldstate * 6364136223846793005ULL + rng->inc;
     PCG_UINT32 xorshifted = (((oldstate >> 18u) ^ oldstate) >> 27u);
@@ -235,7 +225,7 @@ PCG__DECLR PCG_UINT32 pcg_random(PCG* rng) {
     return (xorshifted >> rot) | (xorshifted << (((PCG_UINT32)(-(PCG_INT32)rot)) & 31));
 }
 
-PCG__DECLR void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence) {
+void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence) {
     rng->state = 0U;
     rng->inc = (sequence << 1u) | 1u;
     pcg_random(rng);
@@ -243,11 +233,11 @@ PCG__DECLR void pcg_seeds(PCG* rng, PCG_UINT64 initstate, PCG_UINT64 sequence) {
     pcg_random(rng);
 }
 
-PCG__DECLR void pcg_advance(PCG* rng, PCG_UINT64 delta) {
+void pcg_advance(PCG* rng, PCG_UINT64 delta) {
     rng->state = pcg__advance_lcg_64(rng->state, delta, 6364136223846793005ULL, rng->inc);
 }
 
-PCG__DECLR PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper) {
+PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper) {
 	PCG_INT32 bound = upper - lower + 1;
     // To avoid bias, we need to make the range of the RNG a multiple of
     // bound, which we do by dropping output less than a threshold.
@@ -279,8 +269,8 @@ PCG__DECLR PCG_INT32 pcg_random_in(PCG* rng, PCG_INT32 lower, PCG_INT32 upper) {
     }
 }
 
-PCG__DECLR PCG_UINT64 pcgf_hash64(PCG_UINT64 state) {
-	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
+PCG_UINT64 pcgf__hash64(PCG_UINT64 state) {
+	/* Algorithm "xorshift*" from Marsaglia, "Xorshift RNGs" */
 	state ^= state >> 12; // a
 	state ^= state << 25; // b
 	state ^= state >> 27; // c
