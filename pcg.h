@@ -30,7 +30,7 @@
  // ~~~LIBRARY CONTENTS~~~
  // Macro Options:
  //     PCG_STATIC - #define this to force the library to compile staticly
- //     PCG_NO_STDINT - #define this to disable the use of stdint.h, must define the following:
+ //     PCG_NO_STDINT - #define this to disable the use of stdint.h
  //     PCG_INT32 - #define this to replace the default 32-bit integer type
  //     PCG_UINT32 - #define this to replace the 32-bit unsigned int integer type
  //     PCG_UINT64 - #define this to replace the 64-bit unsigned int integer type
