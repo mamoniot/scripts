@@ -40,8 +40,8 @@ typedef int32  inta;
 #define GIGABYTE (((inta)1)<<30)
 #define TERABYTE (((int64)1)<<40)
 
-#define M_PI 3.141592653f
-#define M_EPS (1.0/65536)
+#define MAM_PI 3.141592653f
+#define MAM_EPS (1.0/65536)
 #define MAX_UINT32 0xffffffffu
 #define MAX_UINT64 0xffffffffffffffffull
 #define MIN_INT32 0x80000000
@@ -49,8 +49,8 @@ typedef int32  inta;
 #define MIN_INT64 0x8000000000000000ll
 #define MAX_INT64 0x7fffffffffffffffll
 
-#define degtorad(a) ((a)*(M_PI/180))
-#define radtodeg(a) ((a)*(180/M_PI))
+#define degtorad(a) ((a)*(MAM_PI/180))
+#define radtodeg(a) ((a)*(180/MAM_PI))
 #define tobyte32(b0, b1, b2, b3) (((b3)<<24) + (b2)*65536 + (b1)*256 + (b0))
 #define tobyte16(b0, b1) ((b1)*256 + (b0))
 #define getbyte(bs, i) ((bs>>((i)*8)) & 255)
