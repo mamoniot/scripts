@@ -64,16 +64,16 @@
  //     Generate a uniformly distributed float, r, where 0 < r < 1
  //
  // PCGF:
- //     A PCG_UINT64 that contains the entire state of a xorshift* rng.
+ //     A PCG_UINT64 that contains the entire state of a xorshift* rng
  //     Works identically to a normal pcg rng, except it is smaller and
- //     faster, producing only slightly lower quality randomness.
+ //     faster, producing only slightly lower quality randomness
  //     To get the PCGF variant of any particular function, prefix it with "pcgf"
  //     (there does not exist a pcgf_seeds or pcgf_advance function)
  //
  // pcgf_hash:
- //     A stateless version of the PCGF family designed specifically for hashing
- //     64-bit integers. These functions take 64-bit integers as input instead of a PCGF*
- //     To get the pcgf_hash variant of any particular function, prefix it with "pcgf_hash"
+ //     A stateless version of a PCGF designed for hashing 64-bit integers.
+ //     These functions take 64-bit integers as input instead of a PCGF*.
+ //     To get the pcgf_hash variant of a function, prefix it with "pcgf_hash"
  //
  // *** THIS LIBRARY IS NOT CRYPTOGRAPHICALLY SECURE ***
 

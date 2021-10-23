@@ -74,7 +74,7 @@ typedef struct MamString {
 typedef struct MamString MamStr;
 
 MAMLIB__DECLS MamString mam_nullstr() {
-	MamString ret = {};
+	MamString ret = {0};
 	return ret;
 }
 MAMLIB__DECLS MamString mam_tostr(char* str) {
@@ -86,6 +86,12 @@ MAMLIB__DECLS MamString mam_consttostr(const char* str) {
 	MamString ret;
 	ret.ptr = (char*)str;//lol
 	ret.size = MAMLIB_STRLEN(str);
+	return ret;
+}
+MAMLIB__DECLS MamString mam_memtostr(void* mem, mam_int mem_size) {
+	MamString ret;
+	ret.ptr = (char*)mem;
+	ret.size = mem_size;
 	return ret;
 }
 
@@ -334,7 +340,7 @@ MAMLIB__DECLR void mam__hextostr(char* buffer, mam_int* i, mam_int n) {
 MAMLIB__DECLR void mam_error_str(const char* file, int line, MamString msg);
 
 #if defined(MAMLIB_DEBUG) || defined(MAMLIB_FORCEASSERT)
-	#define MAM_ASSERT(b) ((b) ? 0 : mam_error_str(__FILE__, __LINE__), mam_nullstr())
+	#define MAM_ASSERT(b) ((b) ? 0 : mam_error_str(__FILE__, __LINE__, mam_nullstr()))
 	#define MAM_ASSERTL(b, msg) ((b) ? 0 : mam_error_str(__FILE__, __LINE__, mam_consttostr(msg)))
 #else
 	#define MAM_ASSERT(b) 0
@@ -460,12 +466,12 @@ MAMLIB__DECLS void* mam_check_on_free(void* buffer) {
 #ifdef MAMLIB_IMPLEMENTATION
 void* mam_check_allocation(MamAllocatorFunc* allocator, void* allocator_data, MamAllocMode mode, mam_int alloc_size, void* old_ptr) {
 	if(mode == MAM_MODE_ALLOC) {
-		if(alloc_size) {
-			return mam_check_on_alloc(allocator(mode, alloc_size + MAM_CHECK_FULL_SIZE, old_ptr, allocator_data), alloc_size);
-		}
+		return mam_check_on_alloc(allocator(mode, alloc_size + MAM_CHECK_FULL_SIZE, old_ptr, allocator_data), alloc_size);
 	} else if(mode == MAM_MODE_REALLOC) {
 		if(alloc_size) {
 			return mam_check_on_alloc(allocator(mode, alloc_size + MAM_CHECK_FULL_SIZE, mam_check_on_free(old_ptr), allocator_data), alloc_size);
+		} else {
+			return allocator(mode, alloc_size, mam_check_on_free(old_ptr), allocator_data);
 		}
 	} else if(mode == MAM_MODE_FREE) {
 		return allocator(mode, alloc_size, mam_check_on_free(old_ptr), allocator_data);
@@ -556,7 +562,7 @@ void* mam__stack_allocator(MamAllocMode mode, mam_int alloc_size, void* old_ptr,
 		}
 
 		return mem;
-	} else if(mode == MAM_MODE_REALLOC) {
+	} else if(mode == MAM_MODE_REALLOC && alloc_size) {
 		mam_int new_size = mam_ptr_sub(old_ptr, stack) - sizeof(MamStack);
 		MAM_ASSERTL(new_size > 0, "mamlib: attempt to pop stack when stack is empty");
 
@@ -571,7 +577,7 @@ void* mam__stack_allocator(MamAllocMode mode, mam_int alloc_size, void* old_ptr,
 			mem = MAMLIB_MALLOC(alloc_size);
 		}
 		return mem;
-	} else if(mode == MAM_MODE_FREE) {
+	} else if(mode == MAM_MODE_FREE || (mode == MAM_MODE_REALLOC && !alloc_size)) {
 		mam_int new_size = mam_ptr_sub(old_ptr, stack) - sizeof(MamStack);
 
 		stack->size = new_size;
@@ -711,10 +717,10 @@ MAMLIB__DECLS int mam_printf(const char* fmt, ...) {
 
 
 #ifndef MAM_LONGNAMES_ONLY
-	#ifdef printf
-		#undef printf
-	#endif
 	#define printf mam_printf
+	#define sprintf stbsp_sprintf
+	#define vsprintf stbsp_vsprintf
+	#define vsnprintf stbsp_vsnprintf
 #endif
 
 
