@@ -22,7 +22,7 @@ typedef  int64_t  int64;
 typedef uint64_t uint64;
 
 #if defined(_WIN64) || defined(__x86_64__) || defined(__ia64__) || defined(__LP64__)
-  #define PTR64
+#define PTR64
 #endif
 #ifdef PTR64
 typedef char mam__testsize2_ptr[sizeof(char *) == 8];
@@ -62,12 +62,12 @@ typedef int32  inta;
 #define cast(type, value) ((type)(value))
 #define ptr_add(type, ptr, n) ((type*)((byte*)(ptr) + (n)))
 #define ptr_sub(ptr0, ptr1) ((inta)((byte*)(ptr0) - (byte*)(ptr1)))
-#define ptr_dist(ptr0, ptr1) ((inta)abs((byte*)(ptr0) - (byte*)(ptr1)))
+#define ptr_dist(ptr0, ptr1) (abs((inta)((byte*)(ptr0) - (byte*)(ptr1))))
 #define memzro(ptr, size) memset(ptr, 0, size)
 #define memzero(ptr, size) memset(ptr, 0, sizeof(*ptr)*(size))
 #define memcopy(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
 #define from_cstr(str) str, strlen(str)
-#define swap(type, v0, v1) do {type mam__t = *(v0); *(v0) = *(v1); *(v1) = mam__t} while(0);
+#define swapt(type, v0, v1) do {type mam__t = *(v0); *(v0) = *(v1); *(v1) = mam__t} while(0);
 #define malloct(type, size) ((type*)malloc(sizeof(type)*(size)))
 #define realloct(type, ptr, size) ((type*)realloc(ptr, sizeof(type)*(size)))
 
@@ -88,6 +88,7 @@ typedef int32  inta;
 #define UNIQUE_NAME(prefix) MACRO_CAT(prefix, __LINE__)
 
 #ifndef MAM_NO_FOR
+#define for_each(name) for(inta name = 0; ; name += 1)
 #define for_each_lt(name, size) int32 UNIQUE_NAME(name) = (size); for(int32 name = 0; name < UNIQUE_NAME(name); name += 1)
 #define for_each_lt_bw(name, size) for(int32 name = (size) - 1; name >= 0; name -= 1)
 

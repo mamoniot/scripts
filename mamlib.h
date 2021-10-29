@@ -18,8 +18,9 @@
 #endif
 #define MAMLIB__DECLS static inline
 
-#define MAMLIB_CHECK_COOKIE ((mam_int)0x4433443344334433ll)
-
+#ifndef MAMLIB_CHECK_COOKIE
+	#define MAMLIB_CHECK_COOKIE ((mam_int)0x4433443344334433ll)
+#endif
 
 
 #include "inttypes.h"
@@ -34,7 +35,9 @@
 	typedef char mamlib__testsize2_ptr[sizeof(char *) == 4];
 	typedef int32_t mam_int;
 #endif
-#define MAMLIB_ALIGNMENT sizeof(void*)
+#ifndef MAMLIB_ALIGNMENT
+	#define MAMLIB_ALIGNMENT sizeof(void*)
+#endif
 
 #include "stdlib.h"
 #ifndef MAMLIB_MALLOC
@@ -340,8 +343,8 @@ MAMLIB__DECLR void mam__hextostr(char* buffer, mam_int* i, mam_int n) {
 MAMLIB__DECLR void mam_error_str(const char* file, int line, MamString msg);
 
 #if defined(MAMLIB_DEBUG) || defined(MAMLIB_FORCEASSERT)
-	#define MAM_ASSERT(b) ((b) ? 0 : mam_error_str(__FILE__, __LINE__, mam_nullstr()))
-	#define MAM_ASSERTL(b, msg) ((b) ? 0 : mam_error_str(__FILE__, __LINE__, mam_consttostr(msg)))
+	#define MAM_ASSERT(b) ((b) ? 0 : (mam_error_str(__FILE__, __LINE__, mam_nullstr()), 0))
+	#define MAM_ASSERTL(b, msg) ((b) ? 0 : (mam_error_str(__FILE__, __LINE__, mam_consttostr(msg)), 0))
 #else
 	#define MAM_ASSERT(b) 0
 	#define MAM_ASSERTL(b, msg) 0
