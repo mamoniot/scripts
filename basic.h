@@ -1,4 +1,4 @@
-//By Monica Moniot
+// By Monica Moniot
 // This header contains a large set macros I find essential for
 // programming in C. Just #include this header file to use it.
 
@@ -34,14 +34,29 @@ typedef uint32 uinta;
 typedef int32  inta;
 #endif
 
+#ifndef alloca
+#ifdef _MSC_VER
+#include <malloc.h>
+#ifndef alloca
+#define alloca(size) _alloca(size)
+#endif
+#else
+#include <alloca.h>
+#endif
+#endif
+#define allocat(type, size) ((type *)alloca(sizeof(type) * (size)))
+
+#define MACRO_CAT_(a, b) a##b
+#define MACRO_CAT(a, b) MACRO_CAT_(a, b)
+#define UNIQUE_NAME(prefix) MACRO_CAT(prefix, __LINE__)
 
 #define KILOBYTE (((inta)1)<<10)
 #define MEGABYTE (((inta)1)<<20)
 #define GIGABYTE (((inta)1)<<30)
 #define TERABYTE (((int64)1)<<40)
 
-#define MAM_PI 3.141592653f
-#define MAM_EPS (1.0/65536)
+#define M_PI 3.14159265358979323846f
+#define M_EPS (1.0f / MEGABYTE)
 #define MAX_UINT32 0xffffffffu
 #define MAX_UINT64 0xffffffffffffffffull
 #define MIN_INT32 0x80000000
@@ -49,57 +64,39 @@ typedef int32  inta;
 #define MIN_INT64 0x8000000000000000ll
 #define MAX_INT64 0x7fffffffffffffffll
 
-#define degtorad(a) ((a)*(MAM_PI/180))
-#define radtodeg(a) ((a)*(180/MAM_PI))
-#define tobyte32(b0, b1, b2, b3) (((b3)<<24) + (b2)*65536 + (b1)*256 + (b0))
-#define tobyte16(b0, b1) ((b1)*256 + (b0))
-#define getbyte(bs, i) ((bs>>((i)*8)) & 255)
-#define getbyte0(bs) (bs & 255)
-#define getbyte1(bs) ((bs)/256 & 255)
-#define getbyte2(bs) ((bs)/65536 & 255)
+#define degtorad(a) ((a)*(M_PI/180f))
+#define radtodeg(a) ((a)*(180f/M_PI))
+#define tobyte32(b0, b1, b2, b3) ((((uint32)(b3))<<24) | (((uint32)(b2))<<16) | (((uint32)(b1))<<8) | ((uint32)(b0)))
+#define tobyte16(b0, b1) ((((uint16)(b1))<<8) | ((uint16)(b0)))
+#define getbyte(bs, i) (((bs)>>((i)<<3)) & 255)
+#define getbyte0(bs) ((bs) & 255)
+#define getbyte1(bs) (((bs)>>8) & 255)
+#define getbyte2(bs) (((bs)>>16) & 255)
 #define getbyte3(bs) (((bs)>>24) & 255)
 
 #define cast(type, value) ((type)(value))
 #define ptr_add(type, ptr, n) ((type*)((byte*)(ptr) + (n)))
 #define ptr_sub(ptr0, ptr1) ((inta)((byte*)(ptr0) - (byte*)(ptr1)))
-#define ptr_dist(ptr0, ptr1) (abs((inta)((byte*)(ptr0) - (byte*)(ptr1))))
+#define ptr_dist(ptr0, ptr1) abs(ptr_sub(ptr0,ptr1))
 #define memzro(ptr, size) memset(ptr, 0, size)
-#define memzero(ptr, size) memset(ptr, 0, sizeof(*ptr)*(size))
-#define memcopy(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
+#define memzrot(ptr, size) memset(ptr, 0, sizeof(*ptr) * (size))
+#define memcpyt(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
 #define from_cstr(str) str, strlen(str)
-#define swapt(type, v0, v1) do {type mam__t = *(v0); *(v0) = *(v1); *(v1) = mam__t} while(0);
+#define swap(type, v0, v1) do {type* mam_t0 = (v0); type* mam_t1 = (v1); type mam_t = *mam_t0; *mam_t0 = *mam_t1; *mam_t1 = mam_t} while(0);
 #define malloct(type, size) ((type*)malloc(sizeof(type)*(size)))
 #define realloct(type, ptr, size) ((type*)realloc(ptr, sizeof(type)*(size)))
 
-#ifndef alloca
-	#ifdef _MSC_VER
-		#include <malloc.h>
-		#ifndef alloca
-			#define alloca(size) _alloca(size)
-		#endif
-	#else
-		#include <alloca.h>
-	#endif
-#endif
-#define allocat(type, size) ((type*)alloca(sizeof(type)*(size)))
-
-#define MACRO_CAT_(a, b) a ## b
-#define MACRO_CAT(a, b) MACRO_CAT_(a, b)
-#define UNIQUE_NAME(prefix) MACRO_CAT(prefix, __LINE__)
-
 #ifndef MAM_NO_FOR
-#define for_each(name) for(inta name = 0; ; name += 1)
-#define for_each_lt(name, size) int32 UNIQUE_NAME(name) = (size); for(int32 name = 0; name < UNIQUE_NAME(name); name += 1)
-#define for_each_lt_bw(name, size) for(int32 name = (size) - 1; name >= 0; name -= 1)
-
-#define for_each_in_range(name, r0, r1) int32 UNIQUE_NAME(name) = (r1); for(int32 name = (r0); name <= UNIQUE_NAME(name); name += 1)
-#define for_each_in_range_bw(name, r0, r1) int32 UNIQUE_NAME(name) = (r0); for(int32 name = (r1); name >= UNIQUE_NAME(name); name -= 1)
+#define for_each_lt(name, size) inta UNIQUE_NAME(name) = (size); for(inta name = 0; name < UNIQUE_NAME(name); name += 1)
+#define for_each_lt_rev(name, size) for(inta name = (size) - 1; name >= 0; name -= 1)
+#define for_each_in_range(name, r0, r1) inta UNIQUE_NAME(name) = (r1); for(inta name = (r0); name <= UNIQUE_NAME(name); name += 1)
+#define for_each_in_range_rev(name, r0, r1) inta UNIQUE_NAME(name) = (r0); for(inta name = (r1); name >= UNIQUE_NAME(name); name -= 1)
 
 #define for_each_in(type, name, array, size) type* UNIQUE_NAME(name) = (array) + (size); for(type* name = (array); name != UNIQUE_NAME(name); name += 1)
-#define for_each_in_bw(type, name, array, size) type* UNIQUE_NAME(name) = (array) - 1; for(type* name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
+#define for_each_in_rev(type, name, array, size) type* UNIQUE_NAME(name) = (array) - 1; for(type* name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
 
-#define for_each_index(type, name, name_ptr, array, size) int32 UNIQUE_NAME(name) = (size); type* name_ptr = (array); for(int32 name = 0; name < UNIQUE_NAME(name); (name += 1, name_ptr += 1))
-#define for_each_index_bw(type, name, name_ptr, array, size) int32 UNIQUE_NAME(name) = (size); type* name_ptr = (array) + UNIQUE_NAME(name) - 1; for(int32 name = UNIQUE_NAME(name) - 1; name >= 0; (name -= 1, name_ptr -= 1))
+#define for_each_idx(type, name, name_ptr, array, size) inta UNIQUE_NAME(name) = (size); type name_ptr = (array); for(inta name = 0; name < UNIQUE_NAME(name); (name += 1, name_ptr += 1))
+#define for_each_idx_rev(type, name, name_ptr, array, size) inta UNIQUE_NAME(name) = (size); type name_ptr = (array) + UNIQUE_NAME(name) - 1; for(inta name = UNIQUE_NAME(name) - 1; name >= 0; (name -= 1, name_ptr -= 1))
 #endif
 
 #endif
