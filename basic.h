@@ -77,7 +77,7 @@ typedef int32  inta;
 #define cast(type, value) ((type)(value))
 #define ptr_add(type, ptr, n) ((type*)((byte*)(ptr) + (n)))
 #define ptr_sub(ptr0, ptr1) ((inta)((byte*)(ptr0) - (byte*)(ptr1)))
-#define ptr_dist(ptr0, ptr1) abs(ptr_sub(ptr0,ptr1))
+#define ptr_dist(ptr0, ptr1) abs(ptr_sub(ptr0, ptr1))
 #define memzro(ptr, size) memset(ptr, 0, size)
 #define memzrot(ptr, size) memset(ptr, 0, sizeof(*ptr) * (size))
 #define memcpyt(ptr0, ptr1, size) memcpy(ptr0, ptr1, sizeof(*ptr0)*(size))
@@ -85,6 +85,7 @@ typedef int32  inta;
 #define swap(type, v0, v1) do {type* mam_t0 = (v0); type* mam_t1 = (v1); type mam_t = *mam_t0; *mam_t0 = *mam_t1; *mam_t1 = mam_t} while(0);
 #define malloct(type, size) ((type*)malloc(sizeof(type)*(size)))
 #define realloct(type, ptr, size) ((type*)realloc(ptr, sizeof(type)*(size)))
+#define memeq(ptr0, size0, ptr1, size1) ((size0) == (size1) && memcmp(ptr0, ptr1, size1) == 0)
 
 #ifndef MAM_NO_FOR
 #define for_each_lt(name, size) inta UNIQUE_NAME(name) = (size); for(inta name = 0; name < UNIQUE_NAME(name); name += 1)
@@ -95,8 +96,8 @@ typedef int32  inta;
 #define for_each_in(type, name, array, size) type* UNIQUE_NAME(name) = (array) + (size); for(type* name = (array); name != UNIQUE_NAME(name); name += 1)
 #define for_each_in_rev(type, name, array, size) type* UNIQUE_NAME(name) = (array) - 1; for(type* name = (array) + (size) - 1; name != UNIQUE_NAME(name); name -= 1)
 
-#define for_each_idx(type, name, name_ptr, array, size) inta UNIQUE_NAME(name) = (size); type name_ptr = (array); for(inta name = 0; name < UNIQUE_NAME(name); (name += 1, name_ptr += 1))
-#define for_each_idx_rev(type, name, name_ptr, array, size) inta UNIQUE_NAME(name) = (size); type name_ptr = (array) + UNIQUE_NAME(name) - 1; for(inta name = UNIQUE_NAME(name) - 1; name >= 0; (name -= 1, name_ptr -= 1))
+#define for_each_idx(type, name, name_ptr, array, size) inta UNIQUE_NAME(name) = (size); type* name_ptr = (array); for(inta name = 0; name < UNIQUE_NAME(name); (name += 1, name_ptr += 1))
+#define for_each_idx_rev(type, name, name_ptr, array, size) inta UNIQUE_NAME(name) = (size); type* name_ptr = (array) + UNIQUE_NAME(name) - 1; for(inta name = UNIQUE_NAME(name) - 1; name >= 0; (name -= 1, name_ptr -= 1))
 #endif
 
 #endif
